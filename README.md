@@ -170,6 +170,10 @@ Available demos:
 - middleware
 - taskMaster
 
+# Feedback / Feature Requests / Say Hi
+
+[Have a quick conversation about Magma here](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff) - Dialog is built with Magma  
+
 # License
 
 Magma is [Apache 2.0 licensed](LICENSE).

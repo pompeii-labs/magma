@@ -1,5 +1,5 @@
 {
-  "name": "magma",
+  "name": "@pompeii-labs/magma",
   "version": "1.0.0",
   "description": "The unopinionated framework to build better agents",
   "main": "dist/index.js",

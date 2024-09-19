@@ -1,20 +1,7 @@
-Here's a draft README for the Magma Framework:
-
 # Magma Framework
 
 <div align="center">
-<img alt="Magma Framework logo" src="[Insert logo URL here]">
-
-<br/>
-<br/>
-
-<div align="center">
-    <a href="[Insert Home Page URL]">Home Page</a> |
-    <a href="[Insert Documentation URL]">Documentation</a> |
-    <a href="[Insert Examples URL]">Examples</a> |
-    <a href="[Insert Discord URL]">Discord</a> |
-    <a href="[Insert Blog URL]">Blog</a>
-</div>
+<img alt="Magma Framework logo" width="128" height="128" src="https://db.productdialog.com/storage/v1/object/public/images/magma-m.webp">
 </div>
 
 <br/>
@@ -28,15 +15,13 @@ Here's a draft README for the Magma Framework:
 
 <div align="center">
 
-[![npm version](https://img.shields.io/npm/v/magma-framework.svg)](https://www.npmjs.com/package/magma-framework)
-[![Discord](https://img.shields.io/discord/NShaQZmhpr?color=7289da&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/NShaQZmhpr)
+[![npm version](https://img.shields.io/npm/v/@pompeii-labs/magma.svg)](https://www.npmjs.com/package/@pompeii-labs/magma)
+[![Discord](https://img.shields.io/discord/1285279452661551145?color=7289da&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/NShaQZmhpr)
 [![GitHub stars](https://img.shields.io/github/stars/pompeii-labs/Magma?style=social)](https://github.com/pompeii-labs/Magma)
 
 </div>
 
 <br/>
-
-[Insert diagram or image showcasing Magma's architecture]
 
 ## What is Magma?
 
@@ -46,11 +31,9 @@ Magma is a framework designed to streamline the development of AI agents. It pro
 
 ## Key Features
 
-- Support for multiple AI providers (OpenAI, Anthropic)
+- Support for multiple AI providers (OpenAI, Anthropic, more to come)
 - Flexible tool system for extending agent capabilities
 - Middleware support for customizing agent behavior
-- Built-in state management
-- Easy integration with various backends and frontends
 
 ## Quick Start
 
@@ -90,15 +73,11 @@ npm install @pompeii-labs/magma
 
 ## Documentation
 
-For detailed documentation, please visit our [Documentation Page].
+For detailed documentation, please visit our [Documentation Page](https://magma.pompeiilabs.com/).
 
 ## Examples
 
-Check out our [Examples Page] for various use cases and implementations using Magma.
-
-## Contributing
-
-We welcome contributions to Magma! Please see our [Contributing Guide] for more details.
+Try looking through the examples in the demos folder. You can also clone the repo and run through each demo to get an idea of how to use Magma and how it works.
 
 ## License
 

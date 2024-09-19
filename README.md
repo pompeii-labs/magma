@@ -1,5 +1,3 @@
-# Magma Framework
-
 <div align="center">
 <img alt="Magma Framework logo" src="https://db.productdialog.com/storage/v1/object/public/images/magma-header.jpg">
 </div>

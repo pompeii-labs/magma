@@ -1,5 +1,8 @@
 {
   "name": "@pompeii-labs/magma",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "1.0.0",
   "description": "The unopinionated framework to build better agents",
   "main": "dist/index.js",

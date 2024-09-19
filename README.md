@@ -36,8 +36,9 @@ Magma is a framework designed to streamline the development of AI agents. It pro
 ## Installation
 
 You can install Magma using npm:
-
-<img alt="npm i @pompeii-labs/magma" src="https://db.productdialog.com/storage/v1/object/public/images/Install_Magma%20(4).png">
+```bash
+npm i @pompeii-labs/magma
+```
 
 ## Quick Start
 

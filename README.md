@@ -23,9 +23,7 @@
 
 ## What is Magma?
 
-We at Pompeii have been building agents since the release of GPT-4. Over the last year and a half, we've tried every 
-
-Magma is a framework designed to streamline the development of AI agents. It provides a set of tools and abstractions that allow developers to focus on the logic and behavior of their agents, rather than the underlying infrastructure.
+Magma is a low-opinion framework allowing developers to focus on the logic and behavior of their agents, rather than dealing with useless abstractions. It gives you greater visibility and control over an agent's process as it occurs.
 
 ## Key Features
 
@@ -45,83 +43,56 @@ npm i @pompeii-labs/magma
 Here's a simple example of creating an AI agent using Magma:
 
 ```ts
-import MagmaAgent from './src/services/magma';
+const agent = new MagmaAgent();
 
-class MyAgent extends MagmaAgent {
-    constructor() {
-        super({
-            provider: 'openai',
-            model: 'gpt-4',
-        });
-    }
+agent.fetchSystemMessages = () => [{ role: 'system', content: 'Welcome the user to the Magma framework by Pompeii Labs' }];
 
-    @tool({ name: 'greet', description: 'Greet the user' })
-    @toolparam({ key: 'name', type: 'string', description: 'Name of the user' })
-    async greet(args: { name: string }) {
-        return `Hello, ${args.name}!`;
-    }
-}
-
-const agent = new MyAgent();
-await agent.setup();
-const result = await agent.trigger('greet');
-console.log(result);
+const reply = await agent.main();
+console.log('Agent: ' + result.content);
 ```
 
 ### Providers
 
-```ts
-const openAIAgent = new MagmaAgent({
-    provider: 'openai',
-    model: 'gpt-4o',
-});
+Magma providers all conform to Magma types, meaning you can now use different LLM providers in the same code without having to do type conversion
 
-const anthropicAgent = new MagmaAgent({
-    provider: 'anthropic',
-    model: 'claude-3-5-sonnet-20240620',
-});
+```ts
+const agent = new MagmaAgent(); // Default provider is OpenAI
+
+const openai = new MagmaAgent({ provider: 'openai', model: 'gpt-o1-mini' });
+
+const anthropic = new MagmaAgent({ provider: 'anthropic', model: 'claude-3-5-sonnet-20240620' });
 ```
 
-### Class Extensions for Custom State Management
+### Class Extensions
+
+The `MagmaAgent` class can be instantiated as-is with `new MagmaAgent` or extended for more custom functionality
 
 ```ts
 class MyAgent extends MagmaAgent {
-    private job: 'project manager' | 'weatherman';
+    myState: any[] = [];
+
     constructor() {
-        super({
-            provider: 'openai',
-            model: 'gpt-4o',
-        });
+        super();
     }
 
-    async setup(opts?: { job: string }) {
-        if (opts?.job) {
-            this.job = opts.job;
-        }}
-    }
+    @tool()
+    async myTool();
 
-    async fetchSystemPrompts(): Promise<MagmaSystemMessage[]> {
-        switch (job) {
-            case 'project manager':
-                return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];
-            case 'weatherman':
-                return [{ role: 'system', content: 'You are a weather reporter, keep the user up to date on the locations they care about' }];
-        }
-    }
+    @middleware()
+    async myMiddleware();
 }
 ```
 
 ### Easy Tool Definitions
 
+Use `@tool` and `@toolparam` decorators to tell your agent which methods are tools it has available. These tools can be called by the agent naturally, or force-called using the `agent.trigger(...)` method
+
 ```ts
 import MagmaAgent from './src/services/magma';
 
 class MyAgent extends MagmaAgent {
     constructor() {
-        super({
-            provider: 'openai',
-            model: 'gpt-4',
-        });
+        super();
     }
 
     @tool({ name: 'greet', description: 'Greet the user' })
@@ -134,15 +105,14 @@ class MyAgent extends MagmaAgent {
 
 ### Extensible Middleware
 
+With `@middleware` you can define different middleware functions to perform data validation, logging, and other vital operations **during** the agent's process. Now you have complete control over the flow of data, whereas other frameworks leave you in the dark as to what's happening under the hood.
+
 ```ts
 import MagmaAgent from './src/services/magma';
 
 class MyAgent extends MagmaAgent {
     constructor() {
-        super({
-            provider: 'openai',
-            model: 'gpt-4',
-        });
+        super();
     }
 
     @middleware('preCompletion') // other options include postCompletion, preToolExecution, postToolExecution
@@ -155,14 +125,51 @@ class MyAgent extends MagmaAgent {
 }
 ```
 
-## Documentation
+### Custom State Management
+
+Use `setup(...)` to initialize any asynchronous data or arguments you need to properly manage your agent's state.
+
+```ts
+class MyAgent extends MagmaAgent {
+    private job: 'project manager' | 'weatherman';
+
+    constructor() {
+        super();
+    }
+
+    async setup(opts?: { job: string }) {
+        if (opts?.job) {
+            this.job = opts.job;
+        }
+    }
+
+    async fetchSystemPrompts(): Promise<MagmaSystemMessage[]> {
+        switch (this.job) {
+            case 'project manager':
+                return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];
+            case 'weatherman':
+                return [{ role: 'system', content: 'You are a weather reporter, keep the user up to date on the locations they care about' }];
+        }
+    }
+}
+```
+
+# Documentation
 
 For detailed documentation, please visit our [Documentation Page](https://magma.pompeiilabs.com/).
 
-## Examples
+# Examples
 
-Try looking through the examples in the demos folder. You can also clone the repo and run through each demo to get an idea of how to use Magma and how it works.
+Try looking through the examples in the `demos/` folder. You can also clone the repo and run through each demo to get an idea of how to use Magma and how it works.
 
-## License
+To run one of the demos, pick one of the approved demo names and run `npm run demo <DEMO_NAME>`.
+Available demos:
+- hello
+- tools
+- chatbot
+- middleware
+- taskMaster
+
+# License
 
 Magma is [Apache 2.0 licensed](LICENSE).

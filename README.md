@@ -1,20 +1,7 @@
-Here's a draft README for the Magma Framework:
-
 # Magma Framework
 
 <div align="center">
-<img alt="Magma Framework logo" src="[Insert logo URL here]">
-
-<br/>
-<br/>
-
-<div align="center">
-    <a href="[Insert Home Page URL]">Home Page</a> |
-    <a href="[Insert Documentation URL]">Documentation</a> |
-    <a href="[Insert Examples URL]">Examples</a> |
-    <a href="[Insert Discord URL]">Discord</a> |
-    <a href="[Insert Blog URL]">Blog</a>
-</div>
+<img alt="Magma Framework logo" src="https://db.productdialog.com/storage/v1/object/public/images/magma-header.jpg">
 </div>
 
 <br/>
@@ -28,15 +15,13 @@ Here's a draft README for the Magma Framework:
 
 <div align="center">
 
-[![npm version](https://img.shields.io/npm/v/magma-framework.svg)](https://www.npmjs.com/package/magma-framework)
-[![Discord](https://img.shields.io/discord/NShaQZmhpr?color=7289da&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/NShaQZmhpr)
+[![npm version](https://img.shields.io/npm/v/@pompeii-labs/magma.svg)](https://www.npmjs.com/package/@pompeii-labs/magma)
+[![Discord](https://img.shields.io/discord/1285279452661551145?color=7289da&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/NShaQZmhpr)
 [![GitHub stars](https://img.shields.io/github/stars/pompeii-labs/Magma?style=social)](https://github.com/pompeii-labs/Magma)
 
 </div>
 
 <br/>
-
-[Insert diagram or image showcasing Magma's architecture]
 
 ## What is Magma?
 
@@ -46,11 +31,17 @@ Magma is a framework designed to streamline the development of AI agents. It pro
 
 ## Key Features
 
-- Support for multiple AI providers (OpenAI, Anthropic)
+- Support for multiple AI providers (OpenAI, Anthropic, more to come)
 - Flexible tool system for extending agent capabilities
 - Middleware support for customizing agent behavior
-- Built-in state management
-- Easy integration with various backends and frontends
+
+## Installation
+
+You can install Magma using npm:
+
+```bash
+npm install @pompeii-labs/magma
+```
 
 ## Quick Start
 
@@ -80,25 +71,100 @@ const result = await agent.trigger('greet');
 console.log(result);
 ```
 
-## Installation
+### Providers
 
-You can install Magma using npm:
+```ts
+const openAIAgent = new MagmaAgent({
+    provider: 'openai',
+    model: 'gpt-4o',
+});
 
-```bash
-npm install @pompeii-labs/magma
+const anthropicAgent = new MagmaAgent({
+    provider: 'anthropic',
+    model: 'claude-3-5-sonnet-20240620',
+});
+```
+
+### Class Extensions for Custom State Management
+
+```ts
+class MyAgent extends MagmaAgent {
+    private job: 'project manager' | 'weatherman';
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4o',
+        });
+    }
+
+    async setup(opts?: { job: string }) {
+        if (opts?.job) {
+            this.job = opts.job;
+        }}
+    }
+
+    async fetchSystemPrompts(): Promise<MagmaSystemMessage[]> {
+        switch (job) {
+            case 'project manager':
+                return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];
+            case 'weatherman':
+                return [{ role: 'system', content: 'You are a weather reporter, keep the user up to date on the locations they care about' }];
+        }
+    }
+}
+```
+
+### Easy Tool Definitions
+
+```ts
+import MagmaAgent from './src/services/magma';
+
+class MyAgent extends MagmaAgent {
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4',
+        });
+    }
+
+    @tool({ name: 'greet', description: 'Greet the user' })
+    @toolparam({ key: 'name', type: 'string', description: 'Name of the user', required: true })
+    async greet(args: { name: string }) {
+        return `Hello, ${args.name}!`;
+    }
+}
+```
+
+### Extensible Middleware
+
+```ts
+import MagmaAgent from './src/services/magma';
+
+class MyAgent extends MagmaAgent {
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4',
+        });
+    }
+
+    @middleware('preCompletion') // other options include postCompletion, preToolExecution, postToolExecution
+    async checkFizzBuzz(message: MagmaMessage) {
+        const userMessage = message as MagmaUserMessage;
+
+        if (userMessage.includes('fizz'))
+            return 'The user has said fizz, you must respond with the word buzz';
+    }
+}
 ```
 
 ## Documentation
 
-For detailed documentation, please visit our [Documentation Page].
+For detailed documentation, please visit our [Documentation Page](https://magma.pompeiilabs.com/).
 
 ## Examples
 
-Check out our [Examples Page] for various use cases and implementations using Magma.
-
-## Contributing
-
-We welcome contributions to Magma! Please see our [Contributing Guide] for more details.
+Try looking through the examples in the demos folder. You can also clone the repo and run through each demo to get an idea of how to use Magma and how it works.
 
 ## License
 

@@ -1,7 +1,7 @@
 # Magma Framework
 
 <div align="center">
-<img alt="Magma Framework logo" width="128" height="128" src="https://db.productdialog.com/storage/v1/object/public/images/magma-m.webp">
+<img alt="Magma Framework logo" src="https://db.productdialog.com/storage/v1/object/public/images/magma-header.jpg">
 </div>
 
 <br/>
@@ -35,6 +35,14 @@ Magma is a framework designed to streamline the development of AI agents. It pro
 - Flexible tool system for extending agent capabilities
 - Middleware support for customizing agent behavior
 
+## Installation
+
+You can install Magma using npm:
+
+```bash
+npm install @pompeii-labs/magma
+```
+
 ## Quick Start
 
 Here's a simple example of creating an AI agent using Magma:
@@ -63,12 +71,91 @@ const result = await agent.trigger('greet');
 console.log(result);
 ```
 
-## Installation
+### Providers
 
-You can install Magma using npm:
+```ts
+const openAIAgent = new MagmaAgent({
+    provider: 'openai',
+    model: 'gpt-4o',
+});
 
-```bash
-npm install @pompeii-labs/magma
+const anthropicAgent = new MagmaAgent({
+    provider: 'anthropic',
+    model: 'claude-3-5-sonnet-20240620',
+});
+```
+
+### Class Extensions for Custom State Management
+
+```ts
+class MyAgent extends MagmaAgent {
+    private job: 'project manager' | 'weatherman';
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4o',
+        });
+    }
+
+    async setup(opts?: { job: string }) {
+        if (opts?.job) {
+            this.job = opts.job;
+        }}
+    }
+
+    async fetchSystemPrompts(): Promise<MagmaSystemMessage[]> {
+        switch (job) {
+            case 'project manager':
+                return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];
+            case 'weatherman':
+                return [{ role: 'system', content: 'You are a weather reporter, keep the user up to date on the locations they care about' }];
+        }
+    }
+}
+```
+
+### Easy Tool Definitions
+
+```ts
+import MagmaAgent from './src/services/magma';
+
+class MyAgent extends MagmaAgent {
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4',
+        });
+    }
+
+    @tool({ name: 'greet', description: 'Greet the user' })
+    @toolparam({ key: 'name', type: 'string', description: 'Name of the user', required: true })
+    async greet(args: { name: string }) {
+        return `Hello, ${args.name}!`;
+    }
+}
+```
+
+### Extensible Middleware
+
+```ts
+import MagmaAgent from './src/services/magma';
+
+class MyAgent extends MagmaAgent {
+    constructor() {
+        super({
+            provider: 'openai',
+            model: 'gpt-4',
+        });
+    }
+
+    @middleware('preCompletion') // other options include postCompletion, preToolExecution, postToolExecution
+    async checkFizzBuzz(message: MagmaMessage) {
+        const userMessage = message as MagmaUserMessage;
+
+        if (userMessage.includes('fizz'))
+            return 'The user has said fizz, you must respond with the word buzz';
+    }
+}
 ```
 
 ## Documentation

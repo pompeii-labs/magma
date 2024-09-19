@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"target": "ES6",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"outDir": "dist",
+		"declaration": true
+	},
+	"include": ["index.ts", "src/**/*.ts", "demos/*.ts"],
+	"exclude": ["node_modules"]
+}

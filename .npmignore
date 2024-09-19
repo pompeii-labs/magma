@@ -1,0 +1,10 @@
+.env*
+.vscode/
+.eslint*
+.prettier*
+node_modules/
+demos/
+tsconfig.json
+package-lock.json
+docs/
+**/*.ts

@@ -1,0 +1,30 @@
+{
+  "name": "magma",
+  "version": "1.0.0",
+  "description": "The unopinionated framework to build better agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "demo": "npm run build && node dist/demos/index.js",
+    "lint": "eslint . --ext .ts --fix"
+  },
+  "keywords": [
+    "Agents",
+    "Typescript",
+    "AI",
+    "Agentic",
+    "LLM"
+  ],
+  "author": "Pompeii Labs, Inc.",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.3",
+    "dotenv": "^16.4.5",
+    "openai": "^4.62.1",
+    "readline": "^1.3.0"
+  }
+}

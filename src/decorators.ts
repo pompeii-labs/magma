@@ -32,4 +32,12 @@ export function toolparam(args: MagmaToolParam) {
     };
 }
 
-export function middleware(trigger: MiddlewareTriggerType) {}
+/**
+ * Decorator for middleware functions to run during completion chains
+ * @param trigger which middleware event should trigger the decorated function
+ */
+export function middleware(trigger: MiddlewareTriggerType) {
+    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+        descriptor.value._middlewareTrigger = trigger;
+    }
+}

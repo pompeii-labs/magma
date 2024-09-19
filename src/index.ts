@@ -49,6 +49,7 @@ export default class MagmaAgent {
     middlewareRetries: Record<number, number>;
     messageContext: number;
     defaultTools: MagmaTool[] = [];
+    defaultMiddleware: Middleware[] = [];
 
     constructor(args?: AgentProps) {
         args ??= {};
@@ -76,6 +77,7 @@ export default class MagmaAgent {
         this.middlewareRetries = {};
 
         this.loadDefaultTools();
+        this.loadDefaultMiddleware();
 
         this.logger?.debug('Agent initialized');
     }
@@ -276,6 +278,34 @@ export default class MagmaAgent {
         }
     }
 
+    private loadDefaultMiddleware(): void {
+        try {
+            const prototype = Object.getPrototypeOf(this);
+            const propertyNames = Object.getOwnPropertyNames(prototype);
+
+            const middleware: Middleware[] = propertyNames
+                .map((fxn) => {
+                    const method = prototype[fxn];
+
+                    if (!(typeof method === 'function' && '_middlewareTrigger' in method)) return null;
+
+                    const trigger = method['_middlewareTrigger'] as MiddlewareTriggerType;
+
+                    return {
+                        action: method.bind(this),
+                        trigger,
+                    } as Middleware;
+                })
+                .filter((f) => f);
+
+            this.logger?.info(`Loaded ${middleware.length} default middleware`);
+
+            this.defaultMiddleware = middleware ?? [];
+        } catch (error) {
+            this.logger?.debug(`Failed to load default middleware - ${error.message ?? 'Unknown'}`);
+        }
+    }
+
     /**
      * Given a tool call, find the appropriate function to handle the run
      *
@@ -284,6 +314,7 @@ export default class MagmaAgent {
      */
     private async executeTool(call: MagmaToolCall) {
         let result: any = null;
+        let toolResult: MagmaMessage;
         try {
             for (const tool of this.tools) {
                 if (tool.name === call.fn_name) {
@@ -319,7 +350,7 @@ export default class MagmaAgent {
         }
 
         // Run 'onToolExecution' middleware
-        await this.runMiddleware('onToolExecution', { call, result });
+        await this.runMiddleware('onToolExecution', toolResult);
 
         return await this.main();
     }
@@ -328,7 +359,7 @@ export default class MagmaAgent {
         // Determine whether there are relevant middleware actions to run
         let middleware: Middleware[] | null;
         try {
-            middleware = this.fetchMiddleware().filter((f) => f.trigger === trigger);
+            middleware = this.middleware.filter((f) => f.trigger === trigger);
             if (!middleware || middleware.length === 0) return false;
         } catch (e) {
             return false;
@@ -397,5 +428,9 @@ export default class MagmaAgent {
 
     private get tools(): MagmaTool[] {
         return [...this.defaultTools, ...this.fetchTools()];
+    }
+
+    private get middleware(): Middleware[] {
+        return [...this.defaultMiddleware, ...this.fetchMiddleware()];
     }
 }

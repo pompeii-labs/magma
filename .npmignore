@@ -4,7 +4,7 @@
 .prettier*
 node_modules/
 demos/
+docs/
+src/**/*.ts
 tsconfig.json
 package-lock.json
-docs/
-**/*.ts

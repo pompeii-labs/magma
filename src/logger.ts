@@ -18,7 +18,14 @@ export enum ANSI {
     MAGENTA = '\u001b[95m',
 }
 
-export class Logger {
+export interface MagmaLogger {
+    debug(message: string): void;
+    info(message: string): void;
+    warn(message: string): void;
+    error(message: string | Error): void;
+}
+
+export class Logger implements MagmaLogger {
     private name: string;
 
     static main = new Logger('Agent');

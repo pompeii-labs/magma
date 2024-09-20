@@ -1,12 +1,14 @@
 /* PROVIDERS */
 
-export type MagmaProvider = 'openai' | 'anthropic';
+export const MagmaProviders = ['openai', 'anthropic'] as const;
+export type MagmaProvider = (typeof MagmaProviders)[number];
 
 export type MagmaToolSchema = {
     name: string;
     description?: string;
     properties: Record<string, MagmaToolParam>;
 };
+
 export type MagmaConfig = {
     model: MagmaModel;
     messages: MagmaMessage[];

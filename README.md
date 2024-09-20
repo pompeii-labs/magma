@@ -25,6 +25,8 @@
 
 Magma is a low-opinion framework allowing developers to focus on the logic and behavior of their agents, rather than dealing with useless abstractions. It gives you greater visibility and control over an agent's process as it occurs.
 
+[Have feedback / requests? Chat with Dialog, our user research agent powered by Magma!](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff)
+
 ## Key Features
 
 - Support for multiple AI providers (OpenAI, Anthropic, more to come)
@@ -77,7 +79,8 @@ const anthropic = new MagmaAgent({ provider: 'anthropic', model: 'claude-3-5-son
 The `MagmaAgent` class can be instantiated as-is with `new MagmaAgent()` or extended for more custom functionality
 
 ```ts
-import { MagmaAgent, tool, middleware } from "@pompeii-labs/magma";
+import { MagmaAgent } from "@pompeii-labs/magma";
+import { middleware, tool } from "@pompeii-labs/magma/decorators";
 
 class MyAgent extends MagmaAgent {
     myState: any[] = [];
@@ -99,7 +102,8 @@ class MyAgent extends MagmaAgent {
 Use `@tool` and `@toolparam` decorators to tell your agent which methods are tools it has available. These tools can be called by the agent naturally, or force-called using the `agent.trigger(...)` method
 
 ```ts
-import { MagmaAgent, tool, toolparam } from "@pompeii-labs/magma";
+import { MagmaAgent } from "@pompeii-labs/magma";
+import { tool, toolparam } from "@pompeii-labs/magma/decorators";
 
 class MyAgent extends MagmaAgent {
     constructor() {
@@ -119,7 +123,8 @@ class MyAgent extends MagmaAgent {
 With `@middleware` you can define different middleware functions to perform data validation, logging, and other vital operations **during** the agent's process. Now you have complete control over the flow of data, whereas other frameworks leave you in the dark as to what's happening under the hood.
 
 ```ts
-import { MagmaAgent, middleware } from "@pompeii-labs/magma";
+import { MagmaAgent } from "@pompeii-labs/magma";
+import { middleware } from "@pompeii-labs/magma/decorators";
 import { MagmaMessage, MagmaUserMessage } from "@pompeii-labs/magma/types";
 
 class MyAgent extends MagmaAgent {
@@ -184,10 +189,6 @@ Available demos:
 - chatbot
 - middleware
 - taskMaster
-
-# Feedback / Feature Requests / Say Hi
-
-[Have a quick conversation about Magma here](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff) - Dialog is built with Magma  
 
 # License
 

@@ -17,8 +17,6 @@ import { Provider } from './providers';
 import { Logger } from './logger';
 import { hash } from './helpers';
 
-export type ContextMap = Map<string, any>;
-
 const MIDDLEWARE_MAX_RETRIES = 5;
 
 type AgentProps = {

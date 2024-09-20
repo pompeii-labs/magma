@@ -43,12 +43,19 @@ npm i @pompeii-labs/magma
 Here's a simple example of creating an AI agent using Magma:
 
 ```ts
+import { MagmaAgent } from "@pompeii-labs/magma";
+
 const agent = new MagmaAgent();
 
-agent.fetchSystemMessages = () => [{ role: 'system', content: 'Welcome the user to the Magma framework by Pompeii Labs' }];
+agent.fetchSystemPrompts = () => [
+    {
+        role: "system",
+        content: "Welcome the user to the Magma framework by Pompeii Labs",
+    },
+];
 
 const reply = await agent.main();
-console.log('Agent: ' + result.content);
+console.log("Agent: " + reply.content);
 ```
 
 ### Providers
@@ -56,6 +63,8 @@ console.log('Agent: ' + result.content);
 Magma providers all conform to Magma types, meaning you can now use different LLM providers in the same code without having to do type conversion
 
 ```ts
+import { MagmaAgent } from "@pompeii-labs/magma";
+
 const agent = new MagmaAgent(); // Default provider is OpenAI
 
 const openai = new MagmaAgent({ provider: 'openai', model: 'gpt-o1-mini' });
@@ -65,9 +74,11 @@ const anthropic = new MagmaAgent({ provider: 'anthropic', model: 'claude-3-5-son
 
 ### Class Extensions
 
-The `MagmaAgent` class can be instantiated as-is with `new MagmaAgent` or extended for more custom functionality
+The `MagmaAgent` class can be instantiated as-is with `new MagmaAgent()` or extended for more custom functionality
 
 ```ts
+import { MagmaAgent, tool, middleware } from "@pompeii-labs/magma";
+
 class MyAgent extends MagmaAgent {
     myState: any[] = [];
 
@@ -76,10 +87,10 @@ class MyAgent extends MagmaAgent {
     }
 
     @tool()
-    async myTool();
+    async myTool() {}
 
     @middleware()
-    async myMiddleware();
+    async myMiddleware() {}
 }
 ```
 
@@ -88,7 +99,7 @@ class MyAgent extends MagmaAgent {
 Use `@tool` and `@toolparam` decorators to tell your agent which methods are tools it has available. These tools can be called by the agent naturally, or force-called using the `agent.trigger(...)` method
 
 ```ts
-import MagmaAgent from './src/services/magma';
+import { MagmaAgent, tool, toolparam } from "@pompeii-labs/magma";
 
 class MyAgent extends MagmaAgent {
     constructor() {
@@ -103,12 +114,13 @@ class MyAgent extends MagmaAgent {
 }
 ```
 
-### Extensible Middleware
+### Introducing Middleware
 
 With `@middleware` you can define different middleware functions to perform data validation, logging, and other vital operations **during** the agent's process. Now you have complete control over the flow of data, whereas other frameworks leave you in the dark as to what's happening under the hood.
 
 ```ts
-import MagmaAgent from './src/services/magma';
+import { MagmaAgent, middleware } from "@pompeii-labs/magma";
+import { MagmaMessage, MagmaUserMessage } from "@pompeii-labs/magma/types";
 
 class MyAgent extends MagmaAgent {
     constructor() {
@@ -119,7 +131,7 @@ class MyAgent extends MagmaAgent {
     async checkFizzBuzz(message: MagmaMessage) {
         const userMessage = message as MagmaUserMessage;
 
-        if (userMessage.includes('fizz'))
+        if (userMessage.content.includes('fizz'))
             return 'The user has said fizz, you must respond with the word buzz';
     }
 }
@@ -130,6 +142,9 @@ class MyAgent extends MagmaAgent {
 Use `setup(...)` to initialize any asynchronous data or arguments you need to properly manage your agent's state.
 
 ```ts
+import { MagmaAgent } from "@pompeii-labs/magma";
+import { MagmaSystemMessage } from "@pompeii-labs/magma/types";
+
 class MyAgent extends MagmaAgent {
     private job: 'project manager' | 'weatherman';
 

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.3",
+    "@pompeii-labs/magma": "file:",
     "dotenv": "^16.4.5",
     "openai": "^4.62.1",
     "readline": "^1.3.0"
@@ -37,8 +38,12 @@
   },
   "typesVersions": {
     "*": {
-      "types": ["./dist/src/types.d.ts"],
-      "decorators": ["./dist/src/decorators.d.ts"]
+      "types": [
+        "./dist/src/types.d.ts"
+      ],
+      "decorators": [
+        "./dist/src/decorators.d.ts"
+      ]
     }
   }
 }

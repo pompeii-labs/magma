@@ -14,7 +14,7 @@ import {
     State,
 } from './types';
 import { Provider } from './providers';
-import { Logger } from './logger';
+import { MagmaLogger } from './logger';
 import { hash } from './helpers';
 
 const MIDDLEWARE_MAX_RETRIES = 5;
@@ -29,7 +29,7 @@ type AgentProps = {
         onError: (error: Error) => void;
         onUsageUpdate?: (usage: object) => void;
     };
-    logger?: Logger;
+    logger?: MagmaLogger;
     messageContext?: number;
 };
 
@@ -40,7 +40,7 @@ export default class MagmaAgent {
         onError: (error: Error) => Promise<void>;
         onUsageUpdate?: (usage: MagmaUsage) => Promise<void>;
     };
-    logger?: Logger;
+    logger?: MagmaLogger;
     state: State;
     messages: MagmaMessage[];
     retryCount: number;

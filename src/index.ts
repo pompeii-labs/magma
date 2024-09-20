@@ -19,6 +19,16 @@ import { hash } from './helpers';
 
 const MIDDLEWARE_MAX_RETRIES = 5;
 
+/**
+ * provider: 'openai' | 'anthropic' (optional)(default openai)
+ * model: any supported model of the associated provider (optional)(default gpt-4o)
+ * fetchSystemPrompts: method to retrieve system prompts whenever a completion is generated
+ * fetchTools: fetch user-defined tools to make available in context (optional)
+ * fetchMiddleware: fetch user-defined middleware actions to perform at various steps in `main()` (optional)
+ * onUpdateFunctions: helper functions to receive more granular data throughout the agent main flow (optional)
+ * logger: any logger conforming the MagmaLogger type (optional)
+ * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
+ */
 type AgentProps = {
     provider?: MagmaProvider;
     model?: MagmaModel;

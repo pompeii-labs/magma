@@ -14,13 +14,21 @@ import {
     State,
 } from './types';
 import { Provider } from './providers';
-import { Logger } from './logger';
+import { MagmaLogger } from './logger';
 import { hash } from './helpers';
-
-export type ContextMap = Map<string, any>;
 
 const MIDDLEWARE_MAX_RETRIES = 5;
 
+/**
+ * provider: 'openai' | 'anthropic' (optional)(default openai)
+ * model: any supported model of the associated provider (optional)(default gpt-4o)
+ * fetchSystemPrompts: method to retrieve system prompts whenever a completion is generated
+ * fetchTools: fetch user-defined tools to make available in context (optional)
+ * fetchMiddleware: fetch user-defined middleware actions to perform at various steps in `main()` (optional)
+ * onUpdateFunctions: helper functions to receive more granular data throughout the agent main flow (optional)
+ * logger: any logger conforming the MagmaLogger type (optional)
+ * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
+ */
 type AgentProps = {
     provider?: MagmaProvider;
     model?: MagmaModel;
@@ -31,7 +39,7 @@ type AgentProps = {
         onError: (error: Error) => void;
         onUsageUpdate?: (usage: object) => void;
     };
-    logger?: Logger;
+    logger?: MagmaLogger;
     messageContext?: number;
 };
 
@@ -42,7 +50,7 @@ export default class MagmaAgent {
         onError: (error: Error) => Promise<void>;
         onUsageUpdate?: (usage: MagmaUsage) => Promise<void>;
     };
-    logger?: Logger;
+    logger?: MagmaLogger;
     state: State;
     messages: MagmaMessage[];
     retryCount: number;

@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import MagmaAgent from '../src';
 import { Logger } from '../src/logger';
 

@@ -1,6 +1,6 @@
 import { Logger } from '../src/logger';
 import { helloWorld } from './1_hello';
-import { cliChatbotDemo } from './3_chatbotCli';
+import { cliChatbotDemo } from './3_chatbot';
 import { middlewareDemo } from './4_middleware';
 import { toolDemo } from './2_tools';
 import { taskMasterDemo } from './5_taskMaster';

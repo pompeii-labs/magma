@@ -7,6 +7,8 @@ import { ChatModel } from "openai/resources/index.mjs";
 export const MagmaProviders = ['openai', 'anthropic'] as const;
 export type MagmaProvider = (typeof MagmaProviders)[number];
 
+export type MagmaClient = OpenAI | Anthropic;
+
 export type AnthropicModel = Anthropic.Messages.Model;
 
 export type OpenAIModel = ChatModel;
@@ -14,11 +16,8 @@ export type OpenAIModel = ChatModel;
 export type MagmaModel = AnthropicModel | OpenAIModel;
 
 export type MagmaProviderConfig = {
-    client: OpenAI;
-    model: OpenAIModel;
-} | {
-    client: Anthropic;
-    model: AnthropicModel;
+    client: MagmaClient;
+    model: MagmaModel;
 };
 
 export type MagmaToolSchema = {

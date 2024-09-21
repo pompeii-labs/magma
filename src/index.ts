@@ -9,8 +9,8 @@ import {
     MagmaToolCall,
     MagmaToolParam,
     MagmaUsage,
-    Middleware,
-    MiddlewareTriggerType,
+    MagmaMiddleware,
+    MagmaMiddlewareTriggerType,
     State,
 } from './types';
 import { Provider } from './providers';
@@ -35,7 +35,7 @@ type AgentProps = {
     providerConfig?: MagmaProviderConfig;
     fetchSystemPrompts?: () => MagmaSystemMessage[];
     fetchTools?: () => MagmaTool[];
-    fetchMiddleware?: () => Middleware[];
+    fetchMiddleware?: () => MagmaMiddleware[];
     onUpdateFunctions?: {
         onError: (error: Error) => void;
         onUsageUpdate?: (usage: object) => void;
@@ -57,7 +57,7 @@ export default class MagmaAgent {
     middlewareRetries: Record<number, number>;
     messageContext: number;
     defaultTools: MagmaTool[] = [];
-    defaultMiddleware: Middleware[] = [];
+    defaultMiddleware: MagmaMiddleware[] = [];
 
     constructor(args?: AgentProps) {
         args ??= {};
@@ -114,7 +114,7 @@ export default class MagmaAgent {
         return [];
     }
 
-    fetchMiddleware(): Middleware[] {
+    fetchMiddleware(): MagmaMiddleware[] {
         return [];
     }
 
@@ -309,18 +309,18 @@ export default class MagmaAgent {
             const prototype = Object.getPrototypeOf(this);
             const propertyNames = Object.getOwnPropertyNames(prototype);
 
-            const middleware: Middleware[] = propertyNames
+            const middleware: MagmaMiddleware[] = propertyNames
                 .map((fxn) => {
                     const method = prototype[fxn];
 
                     if (!(typeof method === 'function' && '_middlewareTrigger' in method)) return null;
 
-                    const trigger = method['_middlewareTrigger'] as MiddlewareTriggerType;
+                    const trigger = method['_middlewareTrigger'] as MagmaMiddlewareTriggerType;
 
                     return {
                         action: method.bind(this),
                         trigger,
-                    } as Middleware;
+                    } as MagmaMiddleware;
                 })
                 .filter((f) => f);
 
@@ -381,9 +381,9 @@ export default class MagmaAgent {
         return await this.main();
     }
 
-    private async runMiddleware(trigger: MiddlewareTriggerType, payload: any): Promise<boolean> {
+    private async runMiddleware(trigger: MagmaMiddlewareTriggerType, payload: any): Promise<boolean> {
         // Determine whether there are relevant middleware actions to run
-        let middleware: Middleware[] | null;
+        let middleware: MagmaMiddleware[] | null;
         try {
             middleware = this.middleware.filter((f) => f.trigger === trigger);
             if (!middleware || middleware.length === 0) return false;
@@ -456,7 +456,7 @@ export default class MagmaAgent {
         return [...this.defaultTools, ...this.fetchTools()];
     }
 
-    private get middleware(): Middleware[] {
+    private get middleware(): MagmaMiddleware[] {
         return [...this.defaultMiddleware, ...this.fetchMiddleware()];
     }
 

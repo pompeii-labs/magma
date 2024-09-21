@@ -64,15 +64,15 @@ export type MagmaTool = {
 /* MIDDLEWARE */
 
 // Types of trigger events for middleware
-export const MiddlewareTriggers = [
+export const MagmaMiddlewareTriggers = [
     'onCompletion',
     'preCompletion',
     'onToolExecution',
     'preToolExecution',
 ] as const;
 // Middleware trigger type
-export type MiddlewareTriggerType = (typeof MiddlewareTriggers)[number];
-export type MiddlewareTriggerTypeArgsMap<T extends MiddlewareTriggerType> = T extends 'onCompletion'
+export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
+export type MagmaMiddlewareTriggerTypeArgsMap<T extends MagmaMiddlewareTriggerType> = T extends 'onCompletion'
     ? any // Generated message
     : T extends 'onToolExecution'
       ? { call: any; result: any }
@@ -80,8 +80,8 @@ export type MiddlewareTriggerTypeArgsMap<T extends MiddlewareTriggerType> = T ex
         ? any // User's message
         : any; // Tool call
 // Middleware container type with trigger and target action
-export type Middleware = {
-    trigger: MiddlewareTriggerType;
+export type MagmaMiddleware = {
+    trigger: MagmaMiddlewareTriggerType;
     action: (args: any, state?: State) => Promise<string | void>;
 };
 

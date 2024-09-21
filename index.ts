@@ -18,7 +18,8 @@ export {
     MagmaModel,
     MagmaProviderConfig,
     MagmaUsage,
-    MiddlewareTriggerType
+    MagmaMiddleware,
+    MagmaMiddlewareTriggerType,
 } from './src/types';
 
 export { MagmaAgent };

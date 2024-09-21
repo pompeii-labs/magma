@@ -16,6 +16,7 @@ export {
     MagmaCompletion,
     MagmaConfig,
     MagmaModel,
+    MagmaProviderConfig,
     MagmaUsage,
     MiddlewareTriggerType
 } from './src/types';

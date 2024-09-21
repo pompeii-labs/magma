@@ -14,7 +14,7 @@ type Demo = (typeof demos)[number];
         if (!demos) throw new Error('Must provide a demo to run');
 
         switch (demo.toLowerCase()) {
-        case 'agent':
+        case 'hello':
             return await helloWorld();
         case 'tools':
             return await toolDemo();

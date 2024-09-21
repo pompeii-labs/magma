@@ -1,10 +1,25 @@
 /* PROVIDERS */
 
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { ChatModel } from "openai/resources/index.mjs";
 
 export const MagmaProviders = ['openai', 'anthropic'] as const;
 export type MagmaProvider = (typeof MagmaProviders)[number];
+
+export type AnthropicModel = Anthropic.Messages.Model;
+
+export type OpenAIModel = ChatModel;
+    
+export type MagmaModel = AnthropicModel | OpenAIModel;
+
+export type MagmaProviderConfig = {
+    client: OpenAI;
+    model: OpenAIModel;
+} | {
+    client: Anthropic;
+    model: AnthropicModel;
+};
 
 export type MagmaToolSchema = {
     name: string;
@@ -125,10 +140,3 @@ export type MagmaToolResult = {
 
 // agent state / scratchpad
 export type State = Map<string, any>;
-
-export type AnthropicModel = Anthropic.Messages.Model;
-
-export type OpenAIModel = ChatModel;
-    
-
-export type MagmaModel = AnthropicModel | OpenAIModel;

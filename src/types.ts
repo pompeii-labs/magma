@@ -1,7 +1,24 @@
 /* PROVIDERS */
 
+import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import { ChatModel } from "openai/resources/index.mjs";
+
 export const MagmaProviders = ['openai', 'anthropic'] as const;
 export type MagmaProvider = (typeof MagmaProviders)[number];
+
+export type MagmaClient = OpenAI | Anthropic;
+
+export type AnthropicModel = Anthropic.Messages.Model;
+
+export type OpenAIModel = ChatModel;
+    
+export type MagmaModel = AnthropicModel | OpenAIModel;
+
+export type MagmaProviderConfig = {
+    client: MagmaClient;
+    model: MagmaModel;
+};
 
 export type MagmaToolSchema = {
     name: string;
@@ -10,7 +27,7 @@ export type MagmaToolSchema = {
 };
 
 export type MagmaConfig = {
-    model: MagmaModel;
+    providerConfig: MagmaProviderConfig;
     messages: MagmaMessage[];
     tools?: MagmaTool[];
     tool_choice?: 'auto' | 'required' | string;
@@ -46,15 +63,15 @@ export type MagmaTool = {
 /* MIDDLEWARE */
 
 // Types of trigger events for middleware
-export const MiddlewareTriggers = [
+export const MagmaMiddlewareTriggers = [
     'onCompletion',
     'preCompletion',
     'onToolExecution',
     'preToolExecution',
 ] as const;
 // Middleware trigger type
-export type MiddlewareTriggerType = (typeof MiddlewareTriggers)[number];
-export type MiddlewareTriggerTypeArgsMap<T extends MiddlewareTriggerType> = T extends 'onCompletion'
+export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
+export type MagmaMiddlewareTriggerTypeArgsMap<T extends MagmaMiddlewareTriggerType> = T extends 'onCompletion'
     ? any // Generated message
     : T extends 'onToolExecution'
       ? { call: any; result: any }
@@ -62,8 +79,8 @@ export type MiddlewareTriggerTypeArgsMap<T extends MiddlewareTriggerType> = T ex
         ? any // User's message
         : any; // Tool call
 // Middleware container type with trigger and target action
-export type Middleware = {
-    trigger: MiddlewareTriggerType;
+export type MagmaMiddleware = {
+    trigger: MagmaMiddlewareTriggerType;
     action: (args: any, state?: State) => Promise<string | void>;
 };
 
@@ -122,20 +139,3 @@ export type MagmaToolResult = {
 
 // agent state / scratchpad
 export type State = Map<string, any>;
-
-export type AnthropicModel =
-    | 'claude-3-5-sonnet-20240620'
-    | 'claude-3-opus-20240229'
-    | 'claude-3-sonnet-20240229'
-    | 'claude-3-haiku-20240307';
-
-export type OpenAIModel =
-    | 'gpt-4o'
-    | 'gpt-4o-mini'
-    | 'o1-preview'
-    | 'o1-mini'
-    | 'gpt-4-turbo'
-    | 'gpt-4'
-    | 'gpt-3.5-turbo';
-
-export type MagmaModel = AnthropicModel | OpenAIModel;

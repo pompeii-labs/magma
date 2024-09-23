@@ -47,17 +47,21 @@ Here's a simple example of creating an AI agent using Magma:
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
 
-const agent = new MagmaAgent();
 
-agent.fetchSystemPrompts = () => [
-    {
-        role: "system",
-        content: "Welcome the user to the Magma framework by Pompeii Labs",
-    },
-];
+async function main() {
+    const agent = new MagmaAgent();
+    
+    agent.fetchSystemPrompts = () => [
+        {
+            role: "system",
+            content: "Welcome the user to the Magma framework by Pompeii Labs",
+        },
+    ];
+    const reply = await agent.main();
+    console.log("Agent: " + reply.content);
+}
 
-const reply = await agent.main();
-console.log("Agent: " + reply.content);
+main();
 ```
 
 ### Providers
@@ -66,12 +70,24 @@ Magma providers all conform to Magma types, meaning you can now use different LL
 
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
-const agent = new MagmaAgent(); // Default provider is OpenAI
+const agent = new MagmaAgent(); // Default provider is OpenAI with model gpt-4o
 
-const openai = new MagmaAgent({ provider: 'openai', model: 'gpt-o1-mini' });
+const openai = new MagmaAgent({
+    providerConfig: {
+        client: new OpenAI(),
+        model: 'gpt-o1-mini',
+    },
+});
 
-const anthropic = new MagmaAgent({ provider: 'anthropic', model: 'claude-3-5-sonnet-20240620' });
+const anthropic = new MagmaAgent({
+    providerConfig: {
+        client: new Anthropic(),
+        model: 'claude-3-5-sonnet-20240620',
+    },
+});
 ```
 
 ### Class Extensions
@@ -89,10 +105,10 @@ class MyAgent extends MagmaAgent {
         super();
     }
 
-    @tool()
+    @tool({ name: 'my_tool', description: 'This is my tool' })
     async myTool() {}
 
-    @middleware()
+    @middleware('onCompletion')
     async myMiddleware() {}
 }
 ```
@@ -157,13 +173,13 @@ class MyAgent extends MagmaAgent {
         super();
     }
 
-    async setup(opts?: { job: string }) {
+    async setup(opts?: { job: 'project manager' | 'weatherman' }) {
         if (opts?.job) {
             this.job = opts.job;
         }
     }
 
-    async fetchSystemPrompts(): Promise<MagmaSystemMessage[]> {
+    fetchSystemPrompts(): MagmaSystemMessage[] {
         switch (this.job) {
             case 'project manager':
                 return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];

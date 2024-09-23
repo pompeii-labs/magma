@@ -19,16 +19,13 @@ import {
     Tool as AnthropicTool,
 } from '@anthropic-ai/sdk/resources/messages.mjs';
 import { cleanParam } from './helpers';
-import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 dotenv.config();
 
 const MAX_RETRIES = 5;
-// Provider Instances
-const openai = process.env.OPENAI_API_KEY ? new OpenAI() : null;
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
 interface ProviderProps {
     name: MagmaProvider;
@@ -85,11 +82,15 @@ export class AnthropicProvider extends Provider {
         else if (typeof config.tool_choice === 'string')
             tool_choice = { type: 'tool', name: config.tool_choice };
 
+        const model = config.providerConfig.model;
+
+        delete config.providerConfig;
+
         const anthropicConfig: AnthropicConfig = {
             ...config,
+            model,
             messages: this.convertMessages(config.messages),
             max_tokens: 2048,
-            model: config.model ?? 'claude-3-5-sonnet-20240620',
             tools: tools,
             tool_choice: tool_choice,
             system: config.messages
@@ -167,6 +168,7 @@ export class AnthropicProvider extends Provider {
         attempt?: number,
     ): Promise<MagmaCompletion> {
         try {
+            const anthropic = config.providerConfig.client as Anthropic;
             if (!anthropic) throw new Error('Anthropic instance not configured');
 
             const anthropicConfig = this.convertConfig(config);
@@ -244,6 +246,7 @@ export class OpenAIProvider extends Provider {
         attempt?: number,
     ): Promise<MagmaCompletion> {
         try {
+            const openai = config.providerConfig.client as OpenAI;
             if (!openai) throw new Error('OpenAI instance not configured');
 
             const openAICompletion = await openai.chat.completions.create(
@@ -329,8 +332,13 @@ export class OpenAIProvider extends Provider {
         else if (typeof config.tool_choice === 'string')
             tool_choice = { type: 'function', function: { name: config.tool_choice } };
 
+        const model = config.providerConfig.model;
+
+        delete config.providerConfig;
+
         const openAIConfig: ChatCompletionCreateParamsNonStreaming = {
             ...config,
+            model,
             messages: this.convertMessages(config.messages),
             tools: tools,
             temperature: config.temperature

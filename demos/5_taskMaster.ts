@@ -1,7 +1,8 @@
+import Anthropic from '@anthropic-ai/sdk';
 import MagmaAgent from '../src';
 import { tool, toolparam } from '../src/decorators';
 import { ANSI, Logger } from '../src/logger';
-import { MagmaAssistantMessage, MagmaMessage, MagmaSystemMessage, Middleware } from '../src/types';
+import { MagmaAssistantMessage, MagmaMessage, MagmaSystemMessage, MagmaMiddleware } from '../src/types';
 import readline from 'readline';
 
 // Define mock task data structure
@@ -23,8 +24,10 @@ class TaskMaster extends MagmaAgent {
         // messageContext of -1 is essentially infinity - no limit on how many messages are used in completions
         super({
             messageContext: -1,
-            provider: 'anthropic',
-            model: 'claude-3-5-sonnet-20240620',
+            providerConfig: {
+                client: new Anthropic(),
+                model: 'claude-3-5-sonnet-20240620',
+            }
         });
 
         this.tasks = [];
@@ -80,7 +83,7 @@ class TaskMaster extends MagmaAgent {
     }
 
     // Override
-    fetchMiddleware(): Middleware[] {
+    fetchMiddleware(): MagmaMiddleware[] {
         return [
             {
                 trigger: 'preToolExecution',

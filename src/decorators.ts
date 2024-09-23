@@ -1,4 +1,4 @@
-import { MagmaToolParam, MiddlewareTriggerType } from './types';
+import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types';
 
 /**
  * Decorator to define a tool (optional)
@@ -36,7 +36,7 @@ export function toolparam(args: MagmaToolParam) {
  * Decorator for middleware functions to run during completion chains
  * @param trigger which middleware event should trigger the decorated function
  */
-export function middleware(trigger: MiddlewareTriggerType) {
+export function middleware(trigger: MagmaMiddlewareTriggerType) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._middlewareTrigger = trigger;
     }

@@ -2,20 +2,22 @@ import {
     MagmaAssistantMessage,
     MagmaConfig,
     MagmaMessage,
-    MagmaModel,
     MagmaProvider,
+    MagmaProviderConfig,
     MagmaSystemMessage,
     MagmaTool,
     MagmaToolCall,
     MagmaToolParam,
     MagmaUsage,
-    Middleware,
-    MiddlewareTriggerType,
+    MagmaMiddleware,
+    MagmaMiddlewareTriggerType,
     State,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
 import { hash, loadTools } from './helpers';
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 const MIDDLEWARE_MAX_RETRIES = 5;
 
@@ -30,11 +32,10 @@ const MIDDLEWARE_MAX_RETRIES = 5;
  * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
  */
 type AgentProps = {
-    provider?: MagmaProvider;
-    model?: MagmaModel;
+    providerConfig?: MagmaProviderConfig;
     fetchSystemPrompts?: () => MagmaSystemMessage[];
     fetchTools?: () => MagmaTool[];
-    fetchMiddleware?: () => Middleware[];
+    fetchMiddleware?: () => MagmaMiddleware[];
     onUpdateFunctions?: {
         onError: (error: Error) => void;
         onUsageUpdate?: (usage: object) => void;
@@ -44,8 +45,7 @@ type AgentProps = {
 };
 
 export default class MagmaAgent {
-    provider: MagmaProvider;
-    model: MagmaModel;
+    private providerConfig: MagmaProviderConfig;
     onUpdateFunctions?: {
         onError: (error: Error) => Promise<void>;
         onUsageUpdate?: (usage: MagmaUsage) => Promise<void>;
@@ -57,12 +57,32 @@ export default class MagmaAgent {
     middlewareRetries: Record<number, number>;
     messageContext: number;
     defaultTools: MagmaTool[] = [];
-    defaultMiddleware: Middleware[] = [];
+    defaultMiddleware: MagmaMiddleware[] = [];
 
     constructor(args?: AgentProps) {
         args ??= {};
-        this.provider = args.provider ?? 'openai';
-        this.model = args.model ?? 'gpt-4o';
+
+        const providerConfig: MagmaProviderConfig = args.providerConfig ?? { client: null, model: null };
+
+        if (!args.providerConfig) {
+            try {
+                providerConfig['client'] = new OpenAI();
+                providerConfig['model'] = 'gpt-4o';
+
+                if (!providerConfig.client.apiKey) throw new Error('No OpenAI API key found, trying Anthropic');
+            } catch (e) {
+                try {
+                    providerConfig['client'] = new Anthropic();
+                    providerConfig['model'] = 'claude-3-5-sonnet-20240620';
+
+                    if (!providerConfig.client.apiKey) throw new Error('No Anthropic API key found');
+                } catch (e) {
+                    throw new Error('No valid client found');
+                }
+            }
+        }
+        this.providerConfig = providerConfig;
+
         this.messageContext = args?.messageContext ?? 20;
 
         if (args.fetchSystemPrompts) {
@@ -94,7 +114,7 @@ export default class MagmaAgent {
         return [];
     }
 
-    fetchMiddleware(): Middleware[] {
+    fetchMiddleware(): MagmaMiddleware[] {
         return [];
     }
 
@@ -130,11 +150,10 @@ export default class MagmaAgent {
 
         if (!tool) throw new Error('No tool found to trigger');
 
-        const providerName = this.provider;
-        const provider = Provider.factory(providerName);
+        const provider = Provider.factory(this.providerName);
 
         const completionConfig: MagmaConfig = {
-            model: this.model,
+            providerConfig: this.providerConfig,
             messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
             temperature: 0,
             tools: [tool],
@@ -186,8 +205,7 @@ export default class MagmaAgent {
      */
     public async main(): Promise<MagmaAssistantMessage> {
         try {
-            const providerName = this.provider;
-            const provider = Provider.factory(providerName);
+            const provider = Provider.factory(this.providerName);
 
             // Call 'preCompletion' middleware
             if (this.messages.some((s) => s.role === 'user')) {
@@ -197,7 +215,7 @@ export default class MagmaAgent {
             const tools = this.tools;
 
             const completionConfig: MagmaConfig = {
-                model: this.model,
+                providerConfig: this.providerConfig,
                 messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
                 temperature: 0,
             };
@@ -234,11 +252,11 @@ export default class MagmaAgent {
     }
 
     /**
-     * Set the provider for the agent's completions
-     * @param provider openai | anthropic
+     * Set the provider configuration for the agent
+     * @param providerConfig provider configuration
      */
-    public setProvider(provider: Provider): void {
-        this.state.set('provider', provider);
+    public setProviderConfig(providerConfig: MagmaProviderConfig): void {
+        this.providerConfig = providerConfig;
     }
 
     /**
@@ -267,18 +285,18 @@ export default class MagmaAgent {
             const prototype = Object.getPrototypeOf(this);
             const propertyNames = Object.getOwnPropertyNames(prototype);
 
-            const middleware: Middleware[] = propertyNames
+            const middleware: MagmaMiddleware[] = propertyNames
                 .map((fxn) => {
                     const method = prototype[fxn];
 
                     if (!(typeof method === 'function' && '_middlewareTrigger' in method)) return null;
 
-                    const trigger = method['_middlewareTrigger'] as MiddlewareTriggerType;
+                    const trigger = method['_middlewareTrigger'] as MagmaMiddlewareTriggerType;
 
                     return {
                         action: method.bind(this),
                         trigger,
-                    } as Middleware;
+                    } as MagmaMiddleware;
                 })
                 .filter((f) => f);
 
@@ -339,9 +357,9 @@ export default class MagmaAgent {
         return await this.main();
     }
 
-    private async runMiddleware(trigger: MiddlewareTriggerType, payload: any): Promise<boolean> {
+    private async runMiddleware(trigger: MagmaMiddlewareTriggerType, payload: any): Promise<boolean> {
         // Determine whether there are relevant middleware actions to run
-        let middleware: Middleware[] | null;
+        let middleware: MagmaMiddleware[] | null;
         try {
             middleware = this.middleware.filter((f) => f.trigger === trigger);
             if (!middleware || middleware.length === 0) return false;
@@ -414,7 +432,13 @@ export default class MagmaAgent {
         return [...this.defaultTools, ...this.fetchTools()];
     }
 
-    private get middleware(): Middleware[] {
+    private get middleware(): MagmaMiddleware[] {
         return [...this.defaultMiddleware, ...this.fetchMiddleware()];
+    }
+
+    private get providerName(): MagmaProvider {
+        return this.providerConfig.client instanceof OpenAI ? 'openai'
+            : this.providerConfig.client instanceof Anthropic ? 'anthropic'
+            : null;
     }
 }

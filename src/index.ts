@@ -274,7 +274,8 @@ export default class MagmaAgent {
     private loadDefaultTools(): void {
         try {
             this.defaultTools = loadTools(this);
-            console.log(this.defaultTools);
+
+            this.defaultTools.length > 0 && this.logger?.info(`Loaded ${this.defaultTools.length} default tools`);
         } catch (error) {
             this.logger?.debug(`Failed to load default tools - ${error.message ?? 'Unknown'}`);
         }

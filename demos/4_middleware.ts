@@ -1,11 +1,14 @@
 import MagmaAgent from '../src';
 import readline from 'readline';
 import { ANSI, Logger } from '../src/logger';
+import Anthropic from '@anthropic-ai/sdk';
 
 export async function middlewareDemo() {
     const agent = new MagmaAgent({
-        provider: 'anthropic',
-        model: 'claude-3-5-sonnet-20240620',
+        providerConfig: {
+            client: new Anthropic(),
+            model: 'claude-3-5-sonnet-20240620',
+        }
     });
 
     agent.fetchSystemPrompts = () => [
@@ -37,12 +40,13 @@ export async function middlewareDemo() {
         {
             trigger: 'preCompletion',
             async action(args) {
+                Logger.main.debug('Checking user message for "fizz"');
                 if (args.content.toLowerCase().includes('fizz')) {
                     Logger.main.warn(
                         'preCompletion middleware detected an issue with user message',
                     );
 
-                    return 'The user said "fizz". You must reply with the word "buzz"';
+                    return 'The user said "fizz". You must reply to this message with the word "buzz"';
                 }
             },
         },
@@ -50,7 +54,8 @@ export async function middlewareDemo() {
         {
             trigger: 'onCompletion',
             async action(args) {
-                if (args.content.toLowerCase().includes('ai')) {
+                Logger.main.debug('Checking agent message for " ai "');
+                if (args.content.toLowerCase().includes(' ai ')) {
                     Logger.main.warn('onCompletion middleware detected an issue, retrying');
 
                     return 'DO NOT USE THE WORD AI IN YOUR MESSAGES';

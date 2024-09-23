@@ -230,7 +230,7 @@ export class AnthropicProvider extends Provider {
             anthropicTools.push({
                 name: tool.name,
                 description: tool.description,
-                input_schema: cleanParam(baseObject, []) as AnthropicTool.InputSchema,
+                input_schema: (tool.params.length === 0 ? { type: 'object' } : cleanParam(baseObject, [])) as AnthropicTool.InputSchema,
             });
         }
 

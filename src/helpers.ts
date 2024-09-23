@@ -1,4 +1,4 @@
-import { MagmaToolParam } from './types';
+import { MagmaTool, MagmaToolParam } from './types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -51,6 +51,50 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
         };
     }
 };
+
+export function loadTools(target: any) {
+    const isClass = /^\s*class\s+/.test(target.toString());
+    const isInstance =
+        typeof target === 'object' && !isClass ? true : false;
+    let propertyNames = [];
+    let prototype: object = undefined;
+
+    if (isInstance) {
+        prototype = Object.getPrototypeOf(target);
+        propertyNames = Object.getOwnPropertyNames(prototype);
+    } else {
+        propertyNames = Object.getOwnPropertyNames(target);
+    }
+
+    const tools: MagmaTool[] = propertyNames
+        .map((fxn) => {
+            const method = isInstance ? prototype[fxn] : target[fxn];
+
+            if (
+                !(
+                    typeof method === 'function' &&
+                    ('_parameterInfo' in method || '_toolInfo' in method)
+                )
+            )
+                return null;
+
+            const params =
+                method['_parameterInfo'] ?? ([] as MagmaToolParam[]);
+            const toolInfo = method['_toolInfo'];
+            const name = toolInfo?.name ?? method['_methodName'];
+            const description = toolInfo?.description ?? undefined;
+
+            return {
+                target: method.bind(target),
+                name,
+                description,
+                params,
+            } as MagmaTool;
+        })
+        .filter((f) => f);
+
+    return tools ?? [];
+}
 
 export function mapNumberInRange(
     n: number,

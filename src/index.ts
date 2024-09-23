@@ -15,7 +15,7 @@ import {
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash } from './helpers';
+import { hash, loadTools } from './helpers';
 
 const MIDDLEWARE_MAX_RETRIES = 5;
 
@@ -255,32 +255,8 @@ export default class MagmaAgent {
 
     private loadDefaultTools(): void {
         try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const tools: MagmaTool[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_parameterInfo' in method)) return null;
-
-                    const params = method['_parameterInfo'] as MagmaToolParam[];
-                    const toolInfo = method['_toolInfo'];
-                    const name = toolInfo?.name ?? method['_methodName'];
-                    const description = toolInfo?.description ?? undefined;
-
-                    return {
-                        target: method.bind(this),
-                        name,
-                        description,
-                        params,
-                    } as MagmaTool;
-                })
-                .filter((f) => f);
-
-            this.logger?.info(`Loaded ${tools.length} default tools`);
-
-            this.defaultTools = tools ?? [];
+            this.defaultTools = loadTools(this);
+            console.log(this.defaultTools);
         } catch (error) {
             this.logger?.debug(`Failed to load default tools - ${error.message ?? 'Unknown'}`);
         }

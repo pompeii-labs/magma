@@ -153,7 +153,7 @@ export default class MagmaAgent {
         const provider = Provider.factory(this.providerName);
 
         const completionConfig: MagmaConfig = {
-            model: this.providerConfig.model,
+            providerConfig: this.providerConfig,
             messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
             temperature: 0,
             tools: [tool],
@@ -215,7 +215,7 @@ export default class MagmaAgent {
             const tools = this.tools;
 
             const completionConfig: MagmaConfig = {
-                model: this.providerConfig.model,
+                providerConfig: this.providerConfig,
                 messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
                 temperature: 0,
             };

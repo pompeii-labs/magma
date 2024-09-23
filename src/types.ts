@@ -27,7 +27,7 @@ export type MagmaToolSchema = {
 };
 
 export type MagmaConfig = {
-    model: MagmaModel;
+    providerConfig: MagmaProviderConfig;
     messages: MagmaMessage[];
     tools?: MagmaTool[];
     tool_choice?: 'auto' | 'required' | string;

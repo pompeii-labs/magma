@@ -15,7 +15,7 @@ import {
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash, loadTools } from './helpers';
+import { hash, isInstanceOf, loadTools } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -438,8 +438,8 @@ export default class MagmaAgent {
     }
 
     private get providerName(): MagmaProvider {
-        return this.providerConfig.client instanceof OpenAI ? 'openai'
-            : this.providerConfig.client instanceof Anthropic ? 'anthropic'
-            : null;
+        if (isInstanceOf(this.providerConfig.client, OpenAI)) return 'openai';
+        if (isInstanceOf(this.providerConfig.client, Anthropic)) return 'anthropic';
+        return null;
     }
 }

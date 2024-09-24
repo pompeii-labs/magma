@@ -120,3 +120,15 @@ export const hash = (str: string) => {
     }
     return hash;
 };
+
+export const isInstanceOf = (obj: any, type: any): boolean => {
+    if (!obj || !obj.constructor || !type) return false;
+  
+    // Iterate through properties of obj's constructor and check if they exist in the type
+    for (const property in obj.constructor) {
+      if (!type[property]) return false;
+    }
+  
+    return true;
+  };
+  

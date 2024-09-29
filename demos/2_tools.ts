@@ -1,6 +1,6 @@
 import MagmaAgent from '../src';
 import { Logger } from '../src/logger';
-import { MagmaToolTarget } from '../src/types';
+import { MagmaToolTarget, MagmaAssistantMessage } from '../src/types';
 
 /**
  * MagmaToolTarget is the type of function a Magma agent expects to be able to call
@@ -41,7 +41,7 @@ export async function toolDemo() {
     ];
 
     // Use the `trigger()` method to force call a specific function by name!
-    const completion = await bot.trigger('fetch_linear_tasks');
+    const completion = await bot.trigger({ name: 'fetch_linear_tasks' }) as MagmaAssistantMessage;
 
     Logger.main.info(completion.content);
 }

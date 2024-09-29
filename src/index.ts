@@ -148,30 +148,54 @@ export default class MagmaAgent {
     /**
      * Manually trigger a tool call in the context of the conversation
      *
-     * @param toolName The name of the tool to run
+     * @param args.name The name of the tool to run
+     * @param args.tool The Magma tool to run
+     * Either `name` or `tool` must be provided. Tool will be prioritized if both are provided.
+     * @param args.returnResult Whether the tool call should be added to the conversation history (default: true)
      * @throws if no tool matching tool is found
      */
-    public async trigger(toolName: string) {
-        const tool = this.tools.find((t) => t.name === toolName);
+    public async trigger(args: { name?: string, tool?: MagmaTool, returnResult?: boolean}): Promise<MagmaAssistantMessage | string> {
+        const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
 
+        args.returnResult ??= false;
+
         const provider = Provider.factory(this.providerName);
+
+        const messages = [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)];
+        if (messages.length > 0 && messages.at(-1).role === 'tool_call') {
+            messages.pop();
+        }
 
         const completionConfig: MagmaConfig = {
             providerConfig: this.providerConfig,
-            messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
+            messages,
             temperature: 0,
             tools: [tool],
-            tool_choice: toolName,
+            tool_choice: tool.name,
         };
 
         const completion = await provider.makeCompletionRequest(completionConfig);
 
         const call = completion.message as MagmaToolCall;
 
+        await this.runMiddleware('preToolExecution', call);
+
+        // If the tool call is not `returnResult`, we just return the result
+        if (args.returnResult) {
+            const result = await tool.target(call.fn_args, this.state);
+
+            await this.runMiddleware('onToolExecution', result);
+
+            return result;
+        }
+
+        // If the tool call is `returnResult`, we add the tool call to the messages and continue the conversation
         try {
             const result = await tool.target(call.fn_args, this.state);
+
+            await this.runMiddleware('onToolExecution', result);
 
             this.messages.push({
                 role: 'tool_result',
@@ -322,33 +346,29 @@ export default class MagmaAgent {
      * @returns completion to continue the conversation
      */
     private async executeTool(call: MagmaToolCall) {
-        let result: any = null;
         let toolResult: MagmaMessage;
         try {
-            for (const tool of this.tools) {
-                if (tool.name === call.fn_name) {
-                    result = await tool.target(call.fn_args, this.state);
+            const tool = this.tools.find((t) => t.name === call.fn_name);
+            if (!tool) throw new Error(`No tool found to handle call for ${call.fn_name}()`);
 
-                    this.messages.push({
-                        role: 'tool_result',
-                        tool_result_id: call.tool_call_id,
-                        tool_result: result,
-                    });
-                    this.retryCount = 0;
-                    break;
-                }
-            }
-
+            const result = await tool.target(call.fn_args, this.state);
             if (!result) {
-                this.logger?.warn(`No tool found to handle call: ${JSON.stringify(call)}`);
+                this.logger?.warn(`Tool execution failed for ${call.fn_name}()`);
 
                 if (this.retryCount >= 3) throw new Error('Tool execution not handled');
 
-                this.messages.pop();
                 this.retryCount++;
             }
+
+            this.messages.push({
+                role: 'tool_result',
+                tool_result_id: call.tool_call_id,
+                tool_result: result,
+            });
+
+            this.retryCount = 0;
         } catch (error) {
-            const errorMessage = `Tool Execution Failed for ${call.fn_name} - ${error.message ?? 'Unknown'}`;
+            const errorMessage = `Tool Execution Failed for ${call.fn_name}() - ${error.message ?? 'Unknown'}`;
             this.logger?.warn(errorMessage);
             this.messages.push({
                 role: 'tool_result',
@@ -359,7 +379,9 @@ export default class MagmaAgent {
         }
 
         // Run 'onToolExecution' middleware
-        await this.runMiddleware('onToolExecution', toolResult);
+        if (toolResult) {
+            await this.runMiddleware('onToolExecution', toolResult);
+        }
 
         return await this.main();
     }

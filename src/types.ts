@@ -108,16 +108,19 @@ export type MagmaMessage =
     | MagmaToolResult;
 
 export type MagmaSystemMessage = {
+    id?: string | number;
     role: 'system';
     content: string;
 };
 
 export type MagmaUserMessage = {
+    id?: string | number;
     role: 'user';
     content: string;
 };
 
 export type MagmaAssistantMessage = {
+    id?: string | number;
     role: 'assistant';
     content: string;
 };

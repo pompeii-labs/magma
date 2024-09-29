@@ -105,7 +105,10 @@ export class AnthropicProvider extends Provider {
     static override convertMessages(messages: MagmaMessage[]): AnthropicMessageParam[] {
         const anthropicMessages: AnthropicMessageParam[] = [];
 
-        for (const message of messages) {
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
+            if ('id' in message) delete message.id;
+
             switch (message.role) {
             case 'system':
                 continue;
@@ -115,6 +118,14 @@ export class AnthropicProvider extends Provider {
                     role: 'assistant',
                     content: message.content,
                 });
+                
+                // Check if the next message is also from the assistant
+                if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
+                    anthropicMessages.push({
+                        role: 'user',
+                        content: 'Continue.',
+                    });
+                }
                 break;
 
             case 'user':
@@ -154,11 +165,17 @@ export class AnthropicProvider extends Provider {
             }
         }
 
-        if (anthropicMessages.length === 0 || anthropicMessages[0].role != 'user')
+        if (anthropicMessages.length === 0 || anthropicMessages.at(0).role != 'user')
             anthropicMessages.unshift({
                 role: 'user',
                 content: 'begin',
             });
+
+        // if (anthropicMessages.at(-1).role != 'user')
+        //     anthropicMessages.push({
+        //         role: 'user',
+        //         content: 'Continue in the natural flow of the conversation with the user',
+        //     });
 
         return anthropicMessages;
     }
@@ -179,7 +196,6 @@ export class AnthropicProvider extends Provider {
             const anthropicMessage = toolCall ?? anthropicCompletion.content[0];
             let magmaMessage: MagmaMessage;
             if (!anthropicMessage) {
-                console.log(anthropicConfig);
                 throw new Error('Anthropic completion was null');
             }
 
@@ -205,7 +221,7 @@ export class AnthropicProvider extends Provider {
 
             return magmaCompletion;
         } catch (error) {
-            if (error.response && error.response.status === 429) {
+            if (error.error?.type === 'rate_limit_error') {
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
                 }
@@ -355,6 +371,8 @@ export class OpenAIProvider extends Provider {
         const openAIMessages: OpenAIMessageParam[] = [];
 
         for (const message of messages) {
+            if ('id' in message) delete message.id;
+
             switch (message.role) {
             case 'system':
                 openAIMessages.push({

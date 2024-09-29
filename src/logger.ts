@@ -28,7 +28,7 @@ export interface MagmaLogger {
 export class Logger implements MagmaLogger {
     private name: string;
 
-    static main = new Logger('Agent');
+    static main = new Logger('Magma');
 
     constructor(name: string) {
         this.name = name;

@@ -36,20 +36,14 @@ type AgentProps = {
     fetchSystemPrompts?: () => MagmaSystemMessage[];
     fetchTools?: () => MagmaTool[];
     fetchMiddleware?: () => MagmaMiddleware[];
-    onUpdateFunctions?: {
-        onError: (error: Error) => void;
-        onUsageUpdate?: (usage: object) => void;
-    };
+    onError?: (error: Error) => Promise<void>;
+    onUsageUpdate?: (usage: object) => Promise<void>;
     logger?: MagmaLogger;
     messageContext?: number;
 };
 
 export default class MagmaAgent {
     private providerConfig: MagmaProviderConfig;
-    onUpdateFunctions?: {
-        onError: (error: Error) => Promise<void>;
-        onUsageUpdate?: (usage: MagmaUsage) => Promise<void>;
-    };
     logger?: MagmaLogger;
     state: State;
     messages: MagmaMessage[];
@@ -97,6 +91,14 @@ export default class MagmaAgent {
             this.fetchMiddleware = args.fetchMiddleware;
         }
 
+        if (args.onError) {
+            this.onError = args.onError;
+        }
+
+        if (args.onUsageUpdate) {
+            this.onUsageUpdate = args.onUsageUpdate;
+        }
+
         this.logger = args.logger;
 
         this.state = new Map();
@@ -121,6 +123,10 @@ export default class MagmaAgent {
     fetchSystemPrompts(): MagmaSystemMessage[] {
         return [];
     }
+
+    onError(error: Error): Promise<void> { throw error; }
+
+    onUsageUpdate(usage: object): Promise<void> { return; }
 
     public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
         throw new Error('Agent.setup function not implemented');
@@ -224,7 +230,7 @@ export default class MagmaAgent {
 
             const completion = await provider.makeCompletionRequest(completionConfig);
 
-            this.onUpdateFunctions?.onUsageUpdate?.(completion.usage);
+            this.onUsageUpdate(completion.usage);
 
             const message = completion.message;
 
@@ -243,9 +249,9 @@ export default class MagmaAgent {
                 return message as MagmaAssistantMessage;
             }
         } catch (error) {
-            if (this.onUpdateFunctions?.onError) {
-                this.onUpdateFunctions.onError(error);
-            } else {
+            try {
+                this.onError(error);
+            } catch {
                 throw error;
             }
         }

@@ -192,7 +192,7 @@ class MyAgent extends MagmaAgent {
 
 # Documentation
 
-For detailed documentation, please visit our [Documentation Page](https://magma.pompeiilabs.com/).
+Detailed documentation coming soon!
 
 # Examples
 

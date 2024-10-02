@@ -8,7 +8,7 @@ export async function middlewareDemo() {
         providerConfig: {
             client: new Anthropic(),
             model: 'claude-3-5-sonnet-20240620',
-        }
+        },
     });
 
     agent.fetchSystemPrompts = () => [
@@ -20,9 +20,9 @@ export async function middlewareDemo() {
 
     /**
      * NEW - middleware
-     * Middleware in Magma is essentially a function you can run in the middle of 
+     * Middleware in Magma is essentially a function you can run in the middle of
      * an agent process so you can have some manual intervention.
-     * 
+     *
      * Rather than having a completion be a black box, now you can have some say!
      *
      * Middleware types: before/after completion generation, before/after tool execution

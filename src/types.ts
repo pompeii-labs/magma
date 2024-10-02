@@ -1,8 +1,8 @@
 /* PROVIDERS */
 
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
-import { ChatModel } from "openai/resources/index.mjs";
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+import { ChatModel } from 'openai/resources/index.mjs';
 
 export const MagmaProviders = ['openai', 'anthropic'] as const;
 export type MagmaProvider = (typeof MagmaProviders)[number];
@@ -12,7 +12,7 @@ export type MagmaClient = OpenAI | Anthropic;
 export type AnthropicModel = Anthropic.Messages.Model;
 
 export type OpenAIModel = ChatModel;
-    
+
 export type MagmaModel = AnthropicModel | OpenAIModel;
 
 export type MagmaProviderConfig = {
@@ -71,13 +71,14 @@ export const MagmaMiddlewareTriggers = [
 ] as const;
 // Middleware trigger type
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
-export type MagmaMiddlewareTriggerTypeArgsMap<T extends MagmaMiddlewareTriggerType> = T extends 'onCompletion'
-    ? any // Generated message
-    : T extends 'onToolExecution'
-      ? { call: any; result: any }
-      : T extends 'preCompletion'
-        ? any // User's message
-        : any; // Tool call
+export type MagmaMiddlewareTriggerTypeArgsMap<T extends MagmaMiddlewareTriggerType> =
+    T extends 'onCompletion'
+        ? any // Generated message
+        : T extends 'onToolExecution'
+          ? { call: any; result: any }
+          : T extends 'preCompletion'
+            ? any // User's message
+            : any; // Tool call
 // Middleware container type with trigger and target action
 export type MagmaMiddleware = {
     trigger: MagmaMiddlewareTriggerType;

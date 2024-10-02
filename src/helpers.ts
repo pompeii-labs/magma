@@ -12,50 +12,49 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
     const objectRequiredParams = [];
 
     switch (param.type) {
-    case 'array':
-        if (!param.items)
-            throw new Error(
-                `Array parameters must have items defined - ${JSON.stringify(param)}`,
-            );
-        return {
-            type: 'array',
-            description: param.description,
-            items: cleanParam(param.items),
-        };
-    case 'object':
-        if (!param.properties)
-            throw new Error(
-                `Object parameters must have properties defined - ${JSON.stringify(param)}`,
-            );
+        case 'array':
+            if (!param.items)
+                throw new Error(
+                    `Array parameters must have items defined - ${JSON.stringify(param)}`,
+                );
+            return {
+                type: 'array',
+                description: param.description,
+                items: cleanParam(param.items),
+            };
+        case 'object':
+            if (!param.properties)
+                throw new Error(
+                    `Object parameters must have properties defined - ${JSON.stringify(param)}`,
+                );
 
-        return {
-            type: 'object',
-            description: param.description,
-            properties: Object.fromEntries(
-                param.properties.map((property) => {
-                    if (!property.key)
-                        throw new Error(
-                            `Object properties must have keys defined - ${JSON.stringify(property)}`,
-                        );
+            return {
+                type: 'object',
+                description: param.description,
+                properties: Object.fromEntries(
+                    param.properties.map((property) => {
+                        if (!property.key)
+                            throw new Error(
+                                `Object properties must have keys defined - ${JSON.stringify(property)}`,
+                            );
 
-                    return [property.key, cleanParam(property, objectRequiredParams)];
-                }),
-            ),
-            required: objectRequiredParams,
-        };
-    default:
-        return {
-            type: param.type,
-            description: param.description,
-            enum: param.enum,
-        };
+                        return [property.key, cleanParam(property, objectRequiredParams)];
+                    }),
+                ),
+                required: objectRequiredParams,
+            };
+        default:
+            return {
+                type: param.type,
+                description: param.description,
+                enum: param.enum,
+            };
     }
 };
 
 export function loadTools(target: any) {
     const isClass = /^\s*class\s+/.test(target.toString());
-    const isInstance =
-        typeof target === 'object' && !isClass ? true : false;
+    const isInstance = typeof target === 'object' && !isClass ? true : false;
     let propertyNames = [];
     let prototype: object = undefined;
 
@@ -78,8 +77,7 @@ export function loadTools(target: any) {
             )
                 return null;
 
-            const params =
-                method['_parameterInfo'] ?? ([] as MagmaToolParam[]);
+            const params = method['_parameterInfo'] ?? ([] as MagmaToolParam[]);
             const toolInfo = method['_toolInfo'];
             const name = toolInfo?.name ?? method['_methodName'];
             const description = toolInfo?.description ?? undefined;
@@ -123,12 +121,11 @@ export const hash = (str: string) => {
 
 export const isInstanceOf = (obj: any, type: any): boolean => {
     if (!obj || !obj.constructor || !type) return false;
-  
+
     // Iterate through properties of obj's constructor and check if they exist in the type
     for (const property in obj.constructor) {
-      if (!type[property]) return false;
+        if (!type[property]) return false;
     }
-  
+
     return true;
-  };
-  
+};

@@ -56,20 +56,25 @@ export default class MagmaAgent {
     constructor(args?: AgentProps) {
         args ??= {};
 
-        const providerConfig: MagmaProviderConfig = args.providerConfig ?? { client: null, model: null };
+        const providerConfig: MagmaProviderConfig = args.providerConfig ?? {
+            client: null,
+            model: null,
+        };
 
         if (!args.providerConfig) {
             try {
                 providerConfig['client'] = new OpenAI();
                 providerConfig['model'] = 'gpt-4o';
 
-                if (!providerConfig.client.apiKey) throw new Error('No OpenAI API key found, trying Anthropic');
+                if (!providerConfig.client.apiKey)
+                    throw new Error('No OpenAI API key found, trying Anthropic');
             } catch (e) {
                 try {
                     providerConfig['client'] = new Anthropic();
                     providerConfig['model'] = 'claude-3-5-sonnet-20240620';
 
-                    if (!providerConfig.client.apiKey) throw new Error('No Anthropic API key found');
+                    if (!providerConfig.client.apiKey)
+                        throw new Error('No Anthropic API key found');
                 } catch (e) {
                     throw new Error('No valid client found');
                 }
@@ -124,9 +129,13 @@ export default class MagmaAgent {
         return [];
     }
 
-    onError(error: Error): Promise<void> { throw error; }
+    onError(error: Error): Promise<void> {
+        throw error;
+    }
 
-    onUsageUpdate(usage: object): Promise<void> { return; }
+    onUsageUpdate(usage: object): Promise<void> {
+        return;
+    }
 
     public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
         throw new Error('Agent.setup function not implemented');
@@ -154,7 +163,11 @@ export default class MagmaAgent {
      * @param args.returnResult Whether the tool call should be added to the conversation history (default: true)
      * @throws if no tool matching tool is found
      */
-    public async trigger(args: { name?: string, tool?: MagmaTool, returnResult?: boolean}): Promise<MagmaAssistantMessage | string> {
+    public async trigger(args: {
+        name?: string;
+        tool?: MagmaTool;
+        returnResult?: boolean;
+    }): Promise<MagmaAssistantMessage | string> {
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
@@ -305,7 +318,8 @@ export default class MagmaAgent {
         try {
             this.defaultTools = loadTools(this);
 
-            this.defaultTools.length > 0 && this.logger?.info(`Loaded ${this.defaultTools.length} default tools`);
+            this.defaultTools.length > 0 &&
+                this.logger?.info(`Loaded ${this.defaultTools.length} default tools`);
         } catch (error) {
             this.logger?.debug(`Failed to load default tools - ${error.message ?? 'Unknown'}`);
         }
@@ -320,7 +334,8 @@ export default class MagmaAgent {
                 .map((fxn) => {
                     const method = prototype[fxn];
 
-                    if (!(typeof method === 'function' && '_middlewareTrigger' in method)) return null;
+                    if (!(typeof method === 'function' && '_middlewareTrigger' in method))
+                        return null;
 
                     const trigger = method['_middlewareTrigger'] as MagmaMiddlewareTriggerType;
 
@@ -386,7 +401,10 @@ export default class MagmaAgent {
         return await this.main();
     }
 
-    private async runMiddleware(trigger: MagmaMiddlewareTriggerType, payload: any): Promise<boolean> {
+    private async runMiddleware(
+        trigger: MagmaMiddlewareTriggerType,
+        payload: any,
+    ): Promise<boolean> {
         // Determine whether there are relevant middleware actions to run
         let middleware: MagmaMiddleware[] | null;
         try {

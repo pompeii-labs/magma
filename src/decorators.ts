@@ -39,5 +39,5 @@ export function toolparam(args: MagmaToolParam) {
 export function middleware(trigger: MagmaMiddlewareTriggerType) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._middlewareTrigger = trigger;
-    }
+    };
 }

@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# Stash unstaged changes
+git stash -q --keep-index
+
+# Run lint and format
+npm run lint-format
+
+# Store the last exit code
+RESULT=$?
+
+# Unstash changes
+git stash pop -q
+
+# If the lint-format command failed, exit with an error status
+if [ $RESULT -ne 0 ]; then
+    echo "Linting or formatting failed. Please fix the issues and try committing again."
+    exit 1
+fi
+
+# Add any changes made by the linter/formatter
+git add -A
+
+# Echo
+echo "Linting and formatting check passed"
+
+# Return the exit code
+exit 0

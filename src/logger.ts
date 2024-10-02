@@ -62,16 +62,16 @@ export class Logger implements MagmaLogger {
 
     private getColor(level?: LogLevel): string {
         switch (level) {
-        case LogLevel.INFO:
-            return ANSI.CYAN;
-        case LogLevel.DEBUG:
-            return ANSI.WHITE;
-        case LogLevel.WARN:
-            return ANSI.YELLOW;
-        case LogLevel.ERROR:
-            return ANSI.RED;
-        default:
-            return ANSI.RESET;
+            case LogLevel.INFO:
+                return ANSI.CYAN;
+            case LogLevel.DEBUG:
+                return ANSI.WHITE;
+            case LogLevel.WARN:
+                return ANSI.YELLOW;
+            case LogLevel.ERROR:
+                return ANSI.RED;
+            default:
+                return ANSI.RESET;
         }
     }
 }

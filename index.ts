@@ -22,8 +22,6 @@ export {
     MagmaMiddlewareTriggerType,
 } from './src/types';
 
-export {
-    loadTools
-} from './src/helpers';
+export { loadTools } from './src/helpers';
 
 export { MagmaAgent };

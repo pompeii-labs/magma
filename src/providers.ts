@@ -40,12 +40,12 @@ export abstract class Provider implements ProviderProps {
 
     public static factory(name: MagmaProvider): typeof Provider {
         switch (name) {
-        case 'anthropic':
-            return AnthropicProvider;
-        case 'openai':
-            return OpenAIProvider;
-        default:
-            throw new Error(`Can not create factory class Provider with type ${name}`);
+            case 'anthropic':
+                return AnthropicProvider;
+            case 'openai':
+                return OpenAIProvider;
+            default:
+                throw new Error(`Can not create factory class Provider with type ${name}`);
         }
     }
 
@@ -110,58 +110,58 @@ export class AnthropicProvider extends Provider {
             if ('id' in message) delete message.id;
 
             switch (message.role) {
-            case 'system':
-                continue;
+                case 'system':
+                    continue;
 
-            case 'assistant':
-                anthropicMessages.push({
-                    role: 'assistant',
-                    content: message.content,
-                });
-                
-                // Check if the next message is also from the assistant
-                if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
+                case 'assistant':
+                    anthropicMessages.push({
+                        role: 'assistant',
+                        content: message.content,
+                    });
+
+                    // Check if the next message is also from the assistant
+                    if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
+                        anthropicMessages.push({
+                            role: 'user',
+                            content: 'Continue.',
+                        });
+                    }
+                    break;
+
+                case 'user':
                     anthropicMessages.push({
                         role: 'user',
-                        content: 'Continue.',
+                        content: message.content,
                     });
-                }
-                break;
+                    break;
 
-            case 'user':
-                anthropicMessages.push({
-                    role: 'user',
-                    content: message.content,
-                });
-                break;
+                case 'tool_call':
+                    anthropicMessages.push({
+                        role: 'assistant',
+                        content: [
+                            {
+                                type: 'tool_use',
+                                id: message.tool_call_id,
+                                name: message.fn_name,
+                                input: message.fn_args,
+                            },
+                        ],
+                    });
+                    break;
 
-            case 'tool_call':
-                anthropicMessages.push({
-                    role: 'assistant',
-                    content: [
-                        {
-                            type: 'tool_use',
-                            id: message.tool_call_id,
-                            name: message.fn_name,
-                            input: message.fn_args,
-                        },
-                    ],
-                });
-                break;
-
-            case 'tool_result':
-                anthropicMessages.push({
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'tool_result',
-                            tool_use_id: message.tool_result_id,
-                            content: message.tool_result,
-                            is_error: message.tool_result_error,
-                        },
-                    ],
-                });
-                break;
+                case 'tool_result':
+                    anthropicMessages.push({
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'tool_result',
+                                tool_use_id: message.tool_result_id,
+                                content: message.tool_result,
+                                is_error: message.tool_result_error,
+                            },
+                        ],
+                    });
+                    break;
             }
         }
 
@@ -248,7 +248,9 @@ export class AnthropicProvider extends Provider {
             anthropicTools.push({
                 name: tool.name,
                 description: tool.description,
-                input_schema: (tool.params.length === 0 ? { type: 'object' } : cleanParam(baseObject, [])) as AnthropicTool.InputSchema,
+                input_schema: (tool.params.length === 0
+                    ? { type: 'object' }
+                    : cleanParam(baseObject, [])) as AnthropicTool.InputSchema,
             });
         }
 
@@ -374,52 +376,52 @@ export class OpenAIProvider extends Provider {
             if ('id' in message) delete message.id;
 
             switch (message.role) {
-            case 'system':
-                openAIMessages.push({
-                    role: 'system',
-                    content: message.content,
-                });
-                break;
+                case 'system':
+                    openAIMessages.push({
+                        role: 'system',
+                        content: message.content,
+                    });
+                    break;
 
-            case 'assistant':
-                openAIMessages.push({
-                    role: 'assistant',
-                    content: message.content,
-                });
-                break;
+                case 'assistant':
+                    openAIMessages.push({
+                        role: 'assistant',
+                        content: message.content,
+                    });
+                    break;
 
-            case 'user':
-                openAIMessages.push({
-                    role: 'user',
-                    content: message.content,
-                });
-                break;
+                case 'user':
+                    openAIMessages.push({
+                        role: 'user',
+                        content: message.content,
+                    });
+                    break;
 
-            case 'tool_call':
-                openAIMessages.push({
-                    role: 'assistant',
-                    tool_calls: [
-                        {
-                            type: 'function',
-                            id: message.tool_call_id,
-                            function: {
-                                name: message.fn_name,
-                                arguments: JSON.stringify(message.fn_args),
+                case 'tool_call':
+                    openAIMessages.push({
+                        role: 'assistant',
+                        tool_calls: [
+                            {
+                                type: 'function',
+                                id: message.tool_call_id,
+                                function: {
+                                    name: message.fn_name,
+                                    arguments: JSON.stringify(message.fn_args),
+                                },
                             },
-                        },
-                    ],
-                });
-                break;
+                        ],
+                    });
+                    break;
 
-            case 'tool_result':
-                openAIMessages.push({
-                    role: 'tool',
-                    tool_call_id: message.tool_result_id,
-                    content: message.tool_result_error
-                        ? `Something went wrong calling your last tool - \n ${message.tool_result}`
-                        : message.tool_result,
-                });
-                break;
+                case 'tool_result':
+                    openAIMessages.push({
+                        role: 'tool',
+                        tool_call_id: message.tool_result_id,
+                        content: message.tool_result_error
+                            ? `Something went wrong calling your last tool - \n ${message.tool_result}`
+                            : message.tool_result,
+                    });
+                    break;
             }
         }
 

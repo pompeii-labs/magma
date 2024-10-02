@@ -28,7 +28,7 @@ export async function toolDemo() {
     bot.fetchTools = () => [
         {
             name: 'fetch_linear_tasks',
-            description: 'Fetch the active user\'s tasks in linear',
+            description: "Fetch the active user's tasks in linear",
             params: [
                 {
                     key: 'n_days',
@@ -41,7 +41,7 @@ export async function toolDemo() {
     ];
 
     // Use the `trigger()` method to force call a specific function by name!
-    const completion = await bot.trigger({ name: 'fetch_linear_tasks' }) as MagmaAssistantMessage;
+    const completion = (await bot.trigger({ name: 'fetch_linear_tasks' })) as MagmaAssistantMessage;
 
     Logger.main.info(completion.content);
 }

@@ -9,7 +9,7 @@ export async function cliChatbotDemo() {
         providerConfig: {
             client: new Anthropic(),
             model: 'claude-3-5-sonnet-20240620',
-        }
+        },
     });
 
     // Let's have a conversation this time

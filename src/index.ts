@@ -191,6 +191,8 @@ export default class MagmaAgent {
 
         const completion = await provider.makeCompletionRequest(completionConfig);
 
+        this.onUsageUpdate(completion.usage);
+
         const call = completion.message as MagmaToolCall;
 
         await this.runMiddleware('preToolExecution', call);

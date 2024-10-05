@@ -6,5 +6,8 @@ node_modules/
 demos/
 docs/
 src/**/*.ts
+index.ts
 tsconfig.json
 package-lock.json
+*.sh
+hooks/

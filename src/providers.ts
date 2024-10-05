@@ -11,17 +11,23 @@ import {
     MagmaCompletion,
     MagmaProvider,
     MagmaToolParam,
+    MagmaStreamChunk,
 } from './types';
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/src/resources/index.js';
 import {
-    MessageCreateParamsNonStreaming as AnthropicConfig,
+    MessageCreateParamsBase as AnthropicConfig,
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
+    Message as AnthropicMessage,
 } from '@anthropic-ai/sdk/resources/messages.mjs';
 import { cleanParam } from './helpers';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import {
+    ChatCompletion,
+    ChatCompletionCreateParamsBase,
+} from 'openai/resources/chat/completions.mjs';
 
 dotenv.config();
 
@@ -55,6 +61,7 @@ export abstract class Provider implements ProviderProps {
 
     static async makeCompletionRequest(
         config: MagmaConfig,
+        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
     ): Promise<MagmaCompletion> {
         throw new Error('Provider.makeCompletionRequest not implemented');
@@ -182,6 +189,7 @@ export class AnthropicProvider extends Provider {
 
     static override async makeCompletionRequest(
         config: MagmaConfig,
+        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt?: number,
     ): Promise<MagmaCompletion> {
         try {
@@ -190,36 +198,95 @@ export class AnthropicProvider extends Provider {
 
             const anthropicConfig = this.convertConfig(config);
 
-            const anthropicCompletion = await anthropic.messages.create(anthropicConfig);
+            if (config.stream) {
+                const stream = await anthropic.messages.create({
+                    ...anthropicConfig,
+                    stream: true,
+                });
 
-            const toolCall = anthropicCompletion.content.find((c) => c.type === 'tool_use');
-            const anthropicMessage = toolCall ?? anthropicCompletion.content[0];
-            let magmaMessage: MagmaMessage;
-            if (!anthropicMessage) {
-                throw new Error('Anthropic completion was null');
-            }
-
-            if (anthropicMessage.type === 'tool_use')
-                magmaMessage = {
-                    role: 'tool_call',
-                    tool_call_id: anthropicMessage.id,
-                    fn_name: anthropicMessage.name,
-                    fn_args: anthropicMessage.input,
+                let buffer = '';
+                const usage: {
+                    input_tokens: number;
+                    output_tokens: number;
+                } = {
+                    input_tokens: 0,
+                    output_tokens: 0,
                 };
-            else if (anthropicMessage.type === 'text')
-                magmaMessage = { role: 'assistant', content: anthropicMessage.text };
+                for await (const chunk of stream) {
+                    let magmaStreamChunk: MagmaStreamChunk;
 
-            const magmaCompletion: MagmaCompletion = {
-                provider: 'anthropic',
-                model: anthropicCompletion.model,
-                message: magmaMessage,
-                usage: {
-                    input_tokens: anthropicCompletion.usage.input_tokens,
-                    output_tokens: anthropicCompletion.usage.output_tokens,
-                },
-            };
+                    switch (chunk.type) {
+                        case 'message_start':
+                            usage.input_tokens += chunk.message.usage.input_tokens;
+                            usage.output_tokens += chunk.message.usage.output_tokens;
+                            break;
+                        case 'message_delta':
+                            usage.output_tokens += chunk.usage.output_tokens;
+                            break;
+                        case 'content_block_delta':
+                            if (chunk.delta.type === 'text_delta') {
+                                buffer += chunk.delta.text;
+                                magmaStreamChunk = {
+                                    provider: 'anthropic',
+                                    model: anthropicConfig.model,
+                                    delta: {
+                                        content: chunk.delta.text,
+                                    },
+                                    buffer: buffer,
+                                };
+                            }
+                            break;
+                        case 'message_stop': {
+                            onStreamChunk();
+                            const magmaCompletion: MagmaCompletion = {
+                                provider: 'anthropic',
+                                model: anthropicConfig.model,
+                                message: { role: 'assistant', content: buffer },
+                                usage: usage,
+                            };
 
-            return magmaCompletion;
+                            return magmaCompletion;
+                        }
+                    }
+
+                    if (onStreamChunk && magmaStreamChunk) {
+                        onStreamChunk(magmaStreamChunk);
+                    }
+                }
+            } else {
+                const anthropicCompletion = (await anthropic.messages.create(
+                    anthropicConfig,
+                )) as AnthropicMessage;
+
+                const toolCall = anthropicCompletion.content.find((c) => c.type === 'tool_use');
+                const anthropicMessage = toolCall ?? anthropicCompletion.content[0];
+                let magmaMessage: MagmaMessage;
+                if (!anthropicMessage) {
+                    throw new Error('Anthropic completion was null');
+                }
+
+                if (anthropicMessage.type === 'tool_use')
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_call_id: anthropicMessage.id,
+                        fn_name: anthropicMessage.name,
+                        fn_args: anthropicMessage.input,
+                    };
+                else if (anthropicMessage.type === 'text')
+                    magmaMessage = { role: 'assistant', content: anthropicMessage.text };
+
+                const magmaCompletion: MagmaCompletion = {
+                    provider: 'anthropic',
+                    model: anthropicCompletion.model,
+                    message: magmaMessage,
+                    usage: {
+                        input_tokens: anthropicCompletion.usage.input_tokens,
+                        output_tokens: anthropicCompletion.usage.output_tokens,
+                    },
+                };
+
+                return magmaCompletion;
+            }
         } catch (error) {
             if (error.error?.type === 'rate_limit_error') {
                 if (attempt >= MAX_RETRIES) {
@@ -229,7 +296,7 @@ export class AnthropicProvider extends Provider {
                 Logger.main.warn(`Rate limited. Retrying after ${delay}ms.`);
 
                 await sleep(delay);
-                return this.makeCompletionRequest(config, attempt + 1);
+                return this.makeCompletionRequest(config, onStreamChunk, attempt + 1);
             } else {
                 throw error;
             }
@@ -261,43 +328,94 @@ export class AnthropicProvider extends Provider {
 export class OpenAIProvider extends Provider {
     static override async makeCompletionRequest(
         config: MagmaConfig,
+        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt?: number,
     ): Promise<MagmaCompletion> {
         try {
             const openai = config.providerConfig.client as OpenAI;
             if (!openai) throw new Error('OpenAI instance not configured');
 
-            const openAICompletion = await openai.chat.completions.create(
-                this.convertConfig(config),
-            );
+            const openAIConfig = this.convertConfig(config);
 
-            const openAIMessage = openAICompletion.choices[0].message;
+            if (config.stream) {
+                const stream = await openai.chat.completions.create({
+                    ...openAIConfig,
+                    stream: true,
+                    stream_options: { include_usage: true },
+                });
 
-            let magmaMessage: MagmaMessage;
+                let buffer = '';
+                for await (const chunk of stream) {
+                    if (onStreamChunk) {
+                        const delta = chunk.choices[0].delta;
+                        buffer += delta.content ?? '';
 
-            if (openAIMessage.tool_calls) {
-                const tool_call = openAIMessage.tool_calls[0];
-                magmaMessage = {
-                    role: 'tool_call',
-                    tool_call_id: tool_call.id,
-                    fn_name: tool_call.function.name,
-                    fn_args: JSON.parse(tool_call.function.arguments),
-                };
+                        const magmaChunk: MagmaStreamChunk = {
+                            id: chunk.id,
+                            provider: 'openai',
+                            model: openAIConfig.model,
+                            delta: {
+                                content: delta.content,
+                                role: delta.role === 'tool' ? 'tool_call' : 'assistant',
+                            },
+                            buffer: buffer,
+                            usage: {
+                                input_tokens: chunk.usage?.prompt_tokens ?? 0,
+                                output_tokens: chunk.usage?.completion_tokens ?? 0,
+                            },
+                        };
+
+                        onStreamChunk(magmaChunk);
+                    }
+
+                    if (chunk.choices[0].finish_reason === 'stop') {
+                        onStreamChunk();
+                        const magmaCompletion: MagmaCompletion = {
+                            provider: 'openai',
+                            model: openAIConfig.model,
+                            message: { role: 'assistant', content: buffer },
+                            usage: {
+                                input_tokens: chunk.usage?.prompt_tokens ?? 0,
+                                output_tokens: chunk.usage?.completion_tokens ?? 0,
+                            },
+                        };
+
+                        return magmaCompletion;
+                    }
+                }
             } else {
-                magmaMessage = { role: 'assistant', content: openAIMessage.content };
+                const openAICompletion = (await openai.chat.completions.create(
+                    openAIConfig,
+                )) as ChatCompletion;
+
+                const openAIMessage = openAICompletion.choices[0].message;
+
+                let magmaMessage: MagmaMessage;
+
+                if (openAIMessage.tool_calls) {
+                    const tool_call = openAIMessage.tool_calls[0];
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_call_id: tool_call.id,
+                        fn_name: tool_call.function.name,
+                        fn_args: JSON.parse(tool_call.function.arguments),
+                    };
+                } else {
+                    magmaMessage = { role: 'assistant', content: openAIMessage.content };
+                }
+
+                const magmaCompletion: MagmaCompletion = {
+                    provider: 'openai',
+                    model: openAICompletion.model,
+                    message: magmaMessage,
+                    usage: {
+                        input_tokens: openAICompletion.usage.prompt_tokens,
+                        output_tokens: openAICompletion.usage.completion_tokens,
+                    },
+                };
+
+                return magmaCompletion;
             }
-
-            const magmaCompletion: MagmaCompletion = {
-                provider: 'openai',
-                model: openAICompletion.model,
-                message: magmaMessage,
-                usage: {
-                    input_tokens: openAICompletion.usage.prompt_tokens,
-                    output_tokens: openAICompletion.usage.completion_tokens,
-                },
-            };
-
-            return magmaCompletion;
         } catch (error) {
             if (error.response && error.response.status === 429) {
                 if (attempt >= MAX_RETRIES) {
@@ -307,7 +425,7 @@ export class OpenAIProvider extends Provider {
                 Logger.main.warn(`Rate limited. Retrying after ${delay}ms.`);
 
                 await sleep(delay);
-                return this.makeCompletionRequest(config, attempt + 1);
+                return this.makeCompletionRequest(config, onStreamChunk, attempt + 1);
             } else {
                 throw error;
             }
@@ -338,7 +456,7 @@ export class OpenAIProvider extends Provider {
     }
 
     // MagmaConfig to Provider-specific config converter
-    static override convertConfig(config: MagmaConfig): ChatCompletionCreateParamsNonStreaming {
+    static override convertConfig(config: MagmaConfig): ChatCompletionCreateParamsBase {
         const tools: OpenAITool[] | undefined = config.tools
             ? this.convertTools(config.tools)
             : undefined;
@@ -354,7 +472,7 @@ export class OpenAIProvider extends Provider {
 
         delete config.providerConfig;
 
-        const openAIConfig: ChatCompletionCreateParamsNonStreaming = {
+        const openAIConfig: ChatCompletionCreateParamsBase = {
             ...config,
             model,
             messages: this.convertMessages(config.messages),

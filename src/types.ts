@@ -32,6 +32,7 @@ export type MagmaConfig = {
     tools?: MagmaTool[];
     tool_choice?: 'auto' | 'required' | string;
     temperature?: number;
+    stream?: boolean;
 };
 
 /* TOOLS  */
@@ -143,3 +144,24 @@ export type MagmaToolResult = {
 
 // agent state / scratchpad
 export type State = Map<string, any>;
+
+export type MagmaStreamChunk = {
+    id?: string;
+    provider: MagmaProvider;
+    model: string;
+    delta: {
+        role?: 'assistant' | 'tool_call';
+        content?: string;
+        tool_call?: {
+            id?: string;
+            name?: string;
+            arguments?: string;
+        };
+    };
+    buffer?: string;
+    reason?: string;
+    usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+    };
+};

@@ -12,6 +12,7 @@ import {
     MagmaMiddleware,
     MagmaMiddlewareTriggerType,
     State,
+    MagmaStreamChunk,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
@@ -52,6 +53,7 @@ export default class MagmaAgent {
     messageContext: number;
     defaultTools: MagmaTool[] = [];
     defaultMiddleware: MagmaMiddleware[] = [];
+    stream: boolean = false;
 
     constructor(args?: AgentProps) {
         args ??= {};
@@ -133,6 +135,10 @@ export default class MagmaAgent {
         throw error;
     }
 
+    onStreamChunk(chunk: MagmaStreamChunk): Promise<void> {
+        return;
+    }
+
     onUsageUpdate(usage: object): Promise<void> {
         return;
     }
@@ -187,9 +193,13 @@ export default class MagmaAgent {
             temperature: 0,
             tools: [tool],
             tool_choice: tool.name,
+            stream: this.stream,
         };
 
-        const completion = await provider.makeCompletionRequest(completionConfig);
+        const completion = await provider.makeCompletionRequest(
+            completionConfig,
+            this.onStreamChunk.bind(this),
+        );
 
         this.onUsageUpdate(completion.usage);
 
@@ -263,11 +273,15 @@ export default class MagmaAgent {
                 providerConfig: this.providerConfig,
                 messages: [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)],
                 temperature: 0,
+                stream: this.stream,
             };
 
             if (tools.length > 0) completionConfig.tools = tools;
 
-            const completion = await provider.makeCompletionRequest(completionConfig);
+            const completion = await provider.makeCompletionRequest(
+                completionConfig,
+                this.onStreamChunk.bind(this),
+            );
 
             this.onUsageUpdate(completion.usage);
 

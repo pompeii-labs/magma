@@ -119,6 +119,12 @@ export default class MagmaAgent {
         this.logger?.debug('Agent initialized');
     }
 
+    public get providerName(): MagmaProvider {
+        if (isInstanceOf(this.providerConfig.client, OpenAI)) return 'openai';
+        if (isInstanceOf(this.providerConfig.client, Anthropic)) return 'anthropic';
+        return null;
+    }
+
     fetchTools(): MagmaTool[] {
         return [];
     }
@@ -497,11 +503,5 @@ export default class MagmaAgent {
 
     private get middleware(): MagmaMiddleware[] {
         return [...this.defaultMiddleware, ...this.fetchMiddleware()];
-    }
-
-    private get providerName(): MagmaProvider {
-        if (isInstanceOf(this.providerConfig.client, OpenAI)) return 'openai';
-        if (isInstanceOf(this.providerConfig.client, Anthropic)) return 'anthropic';
-        return null;
     }
 }

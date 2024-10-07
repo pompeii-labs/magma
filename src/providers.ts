@@ -12,6 +12,7 @@ import {
     MagmaProvider,
     MagmaToolParam,
     MagmaStreamChunk,
+    MagmaUsage,
 } from './types';
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/src/resources/index.js';
 import {
@@ -345,9 +346,22 @@ export class OpenAIProvider extends Provider {
                 });
 
                 let buffer = '';
+                const usage: MagmaUsage = {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                };
+
                 for await (const chunk of stream) {
+                    if (chunk.usage) {
+                        usage.input_tokens = chunk.usage?.prompt_tokens ?? 0;
+                        usage.output_tokens = chunk.usage?.completion_tokens ?? 0;
+                        continue;
+                    }
+
                     if (onStreamChunk) {
-                        const delta = chunk.choices[0].delta;
+                        const delta = chunk.choices[0]?.delta;
+                        if (!delta?.content) continue;
+
                         buffer += delta.content ?? '';
 
                         const magmaChunk: MagmaStreamChunk = {
@@ -358,31 +372,22 @@ export class OpenAIProvider extends Provider {
                                 content: delta.content,
                                 role: delta.role === 'tool' ? 'tool_call' : 'assistant',
                             },
-                            buffer: buffer,
-                            usage: {
-                                input_tokens: chunk.usage?.prompt_tokens ?? 0,
-                                output_tokens: chunk.usage?.completion_tokens ?? 0,
-                            },
+                            buffer,
                         };
 
                         onStreamChunk(magmaChunk);
                     }
-
-                    if (chunk.choices[0].finish_reason === 'stop') {
-                        onStreamChunk();
-                        const magmaCompletion: MagmaCompletion = {
-                            provider: 'openai',
-                            model: openAIConfig.model,
-                            message: { role: 'assistant', content: buffer },
-                            usage: {
-                                input_tokens: chunk.usage?.prompt_tokens ?? 0,
-                                output_tokens: chunk.usage?.completion_tokens ?? 0,
-                            },
-                        };
-
-                        return magmaCompletion;
-                    }
                 }
+
+                onStreamChunk();
+                const magmaCompletion: MagmaCompletion = {
+                    provider: 'openai',
+                    model: openAIConfig.model,
+                    message: { role: 'assistant', content: buffer },
+                    usage,
+                };
+
+                return magmaCompletion;
             } else {
                 const openAICompletion = (await openai.chat.completions.create(
                     openAIConfig,

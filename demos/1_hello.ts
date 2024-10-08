@@ -13,6 +13,8 @@ export async function helloWorld() {
         },
     ];
 
+    bot.setProviderConfig({ provider: 'openai', model: 'chatgpt-4o-latest' });
+
     // Agent `main()` method to run a completion for us
     const completion = await bot.main();
 

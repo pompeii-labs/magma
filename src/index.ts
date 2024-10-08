@@ -59,30 +59,11 @@ export default class MagmaAgent {
         args ??= {};
 
         const providerConfig: MagmaProviderConfig = args.providerConfig ?? {
-            client: null,
-            model: null,
+            provider: 'openai',
+            model: 'gpt-4o',
         };
 
-        if (!args.providerConfig) {
-            try {
-                providerConfig['client'] = new OpenAI();
-                providerConfig['model'] = 'gpt-4o';
-
-                if (!providerConfig.client.apiKey)
-                    throw new Error('No OpenAI API key found, trying Anthropic');
-            } catch (e) {
-                try {
-                    providerConfig['client'] = new Anthropic();
-                    providerConfig['model'] = 'claude-3-5-sonnet-20240620';
-
-                    if (!providerConfig.client.apiKey)
-                        throw new Error('No Anthropic API key found');
-                } catch (e) {
-                    throw new Error('No valid client found');
-                }
-            }
-        }
-        this.providerConfig = providerConfig;
+        this.setProviderConfig(providerConfig);
 
         this.messageContext = args?.messageContext ?? 20;
 
@@ -120,9 +101,7 @@ export default class MagmaAgent {
     }
 
     public get providerName(): MagmaProvider {
-        if (isInstanceOf(this.providerConfig.client, OpenAI)) return 'openai';
-        if (isInstanceOf(this.providerConfig.client, Anthropic)) return 'anthropic';
-        return null;
+        return this.providerConfig.provider;
     }
 
     fetchTools(): MagmaTool[] {
@@ -321,6 +300,21 @@ export default class MagmaAgent {
      * @param providerConfig provider configuration
      */
     public setProviderConfig(providerConfig: MagmaProviderConfig): void {
+        if (!providerConfig.client && !providerConfig.provider) {
+            throw new Error('Provider client or provider must be defined');
+        }
+
+        switch (providerConfig.provider) {
+            case 'openai':
+                providerConfig.client ??= new OpenAI();
+                break;
+            case 'anthropic':
+                providerConfig.client ??= new Anthropic();
+                break;
+            default:
+                throw new Error('Invalid provider');
+        }
+
         this.providerConfig = providerConfig;
     }
 

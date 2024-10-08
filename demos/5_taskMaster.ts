@@ -1,13 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import MagmaAgent from '../src';
 import { tool, toolparam } from '../src/decorators';
 import { ANSI, Logger } from '../src/logger';
-import {
-    MagmaAssistantMessage,
-    MagmaMessage,
-    MagmaSystemMessage,
-    MagmaMiddleware,
-} from '../src/types';
+import { MagmaAssistantMessage, MagmaSystemMessage, MagmaMiddleware } from '../src/types';
 import readline from 'readline';
 
 // Define mock task data structure
@@ -30,7 +24,7 @@ class TaskMaster extends MagmaAgent {
         super({
             messageContext: -1,
             providerConfig: {
-                client: new Anthropic(),
+                provider: 'anthropic',
                 model: 'claude-3-5-sonnet-20240620',
             },
         });

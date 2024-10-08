@@ -15,10 +15,17 @@ export type OpenAIModel = ChatModel;
 
 export type MagmaModel = AnthropicModel | OpenAIModel;
 
-export type MagmaProviderConfig = {
-    client: MagmaClient;
-    model: MagmaModel;
-};
+export type MagmaProviderConfig =
+    | {
+          client?: OpenAI;
+          provider: 'openai';
+          model: OpenAIModel;
+      }
+    | {
+          client?: Anthropic;
+          provider: 'anthropic';
+          model: AnthropicModel;
+      };
 
 export type MagmaToolSchema = {
     name: string;

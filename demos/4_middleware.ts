@@ -1,12 +1,11 @@
 import MagmaAgent from '../src';
 import readline from 'readline';
 import { ANSI, Logger } from '../src/logger';
-import Anthropic from '@anthropic-ai/sdk';
 
 export async function middlewareDemo() {
     const agent = new MagmaAgent({
         providerConfig: {
-            client: new Anthropic(),
+            provider: 'anthropic',
             model: 'claude-3-5-sonnet-20240620',
         },
     });

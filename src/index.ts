@@ -151,19 +151,19 @@ export default class MagmaAgent {
      * @param args.name The name of the tool to run
      * @param args.tool The Magma tool to run
      * Either `name` or `tool` must be provided. Tool will be prioritized if both are provided.
-     * @param args.returnResult Whether the tool call should be added to the conversation history (default: true)
+     * @param args.inConversation Whether the tool call should be added to the conversation history (default: false)
      * @throws if no tool matching tool is found
      */
     public async trigger(args: {
         name?: string;
         tool?: MagmaTool;
-        returnResult?: boolean;
+        inConversation?: boolean;
     }): Promise<MagmaAssistantMessage | string> {
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
 
-        args.returnResult ??= false;
+        args.inConversation ??= false;
 
         const provider = Provider.factory(this.providerName);
 
@@ -192,8 +192,8 @@ export default class MagmaAgent {
 
         await this.runMiddleware('preToolExecution', call);
 
-        // If the tool call is not `returnResult`, we just return the result
-        if (args.returnResult) {
+        // If the tool call is not `inConversation`, we just return the result
+        if (!args.inConversation) {
             const result = await tool.target(call.fn_args, this.state);
 
             await this.runMiddleware('onToolExecution', result);
@@ -201,8 +201,10 @@ export default class MagmaAgent {
             return result;
         }
 
-        // If the tool call is `returnResult`, we add the tool call to the messages and continue the conversation
+        // If the tool call is `inConversation`, we add the tool call to the messages and continue the conversation
         try {
+            this.messages.push(call);
+
             const result = await tool.target(call.fn_args, this.state);
 
             await this.runMiddleware('onToolExecution', result);

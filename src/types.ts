@@ -51,7 +51,7 @@ export type MagmaToolParam = {
     description?: string;
     items?: MagmaToolParam;
     required?: boolean;
-    enum?: string[];
+    enum?: string[] | number[];
     limit?: number;
     properties?: MagmaToolParam[];
 };

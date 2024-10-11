@@ -44,16 +44,17 @@ type AgentProps = {
 };
 
 export default class MagmaAgent {
-    private providerConfig: MagmaProviderConfig;
     logger?: MagmaLogger;
     state: State;
-    messages: MagmaMessage[];
-    retryCount: number;
-    middlewareRetries: Record<number, number>;
-    messageContext: number;
-    defaultTools: MagmaTool[] = [];
-    defaultMiddleware: MagmaMiddleware[] = [];
     stream: boolean = false;
+    private providerConfig: MagmaProviderConfig;
+    private retryCount: number;
+    private messages: MagmaMessage[];
+    private middlewareRetries: Record<number, number>;
+    private messageContext: number;
+    private defaultTools: MagmaTool[] = [];
+    private defaultMiddleware: MagmaMiddleware[] = [];
+    private abortController: AbortController | null = null;
 
     constructor(args?: AgentProps) {
         args ??= {};
@@ -181,9 +182,14 @@ export default class MagmaAgent {
             stream: this.stream,
         };
 
+        // Create a new AbortController for this request
+        this.abortController = new AbortController();
+
         const completion = await provider.makeCompletionRequest(
             completionConfig,
             this.onStreamChunk.bind(this),
+            0,
+            this.abortController?.signal,
         );
 
         this.onUsageUpdate(completion.usage);
@@ -265,9 +271,14 @@ export default class MagmaAgent {
 
             if (tools.length > 0) completionConfig.tools = tools;
 
+            // Create a new AbortController for this request
+            this.abortController = new AbortController();
+
             const completion = await provider.makeCompletionRequest(
                 completionConfig,
                 this.onStreamChunk.bind(this),
+                0,
+                this.abortController?.signal,
             );
 
             this.onUsageUpdate(completion.usage);
@@ -289,11 +300,17 @@ export default class MagmaAgent {
                 return message as MagmaAssistantMessage;
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                this.logger?.info('Request was aborted');
+                throw new Error('Request aborted');
+            }
             try {
                 this.onError(error);
             } catch {
                 throw error;
             }
+        } finally {
+            this.abortController = null;
         }
     }
 
@@ -328,6 +345,23 @@ export default class MagmaAgent {
      */
     public addMessage(content: string, role: 'system' | 'assistant' | 'user' = 'user'): void {
         this.messages.push({ role, content });
+    }
+
+    /**
+     * Stops the currently executing request.
+     */
+    public kill(): void {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+    }
+
+    /**
+     * Return whether the agent is currently processing a request
+     */
+    public get processing(): boolean {
+        return !!this.abortController;
     }
 
     /* PRIVATE METHODS */

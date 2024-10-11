@@ -64,6 +64,7 @@ export abstract class Provider implements ProviderProps {
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
+        signal?: AbortSignal,
     ): Promise<MagmaCompletion> {
         throw new Error('Provider.makeCompletionRequest not implemented');
     }
@@ -191,7 +192,8 @@ export class AnthropicProvider extends Provider {
     static override async makeCompletionRequest(
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
-        attempt?: number,
+        attempt: number = 0,
+        signal?: AbortSignal,
     ): Promise<MagmaCompletion> {
         try {
             const anthropic = config.providerConfig.client as Anthropic;
@@ -200,10 +202,13 @@ export class AnthropicProvider extends Provider {
             const anthropicConfig = this.convertConfig(config);
 
             if (config.stream) {
-                const stream = await anthropic.messages.create({
-                    ...anthropicConfig,
-                    stream: true,
-                });
+                const stream = await anthropic.messages.create(
+                    {
+                        ...anthropicConfig,
+                        stream: true,
+                    },
+                    { signal },
+                );
 
                 let buffer = '';
                 const usage: {
@@ -255,9 +260,10 @@ export class AnthropicProvider extends Provider {
                     }
                 }
             } else {
-                const anthropicCompletion = (await anthropic.messages.create(
-                    anthropicConfig,
-                )) as AnthropicMessage;
+                // console.log(anthropicConfig.messages);
+                const anthropicCompletion = (await anthropic.messages.create(anthropicConfig, {
+                    signal,
+                })) as AnthropicMessage;
 
                 const toolCall = anthropicCompletion.content.find((c) => c.type === 'tool_use');
                 const anthropicMessage = toolCall ?? anthropicCompletion.content[0];
@@ -289,6 +295,9 @@ export class AnthropicProvider extends Provider {
                 return magmaCompletion;
             }
         } catch (error) {
+            if (signal?.aborted) {
+                throw new Error('Request aborted');
+            }
             if (error.error?.type === 'rate_limit_error') {
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
@@ -330,7 +339,8 @@ export class OpenAIProvider extends Provider {
     static override async makeCompletionRequest(
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
-        attempt?: number,
+        attempt: number = 0,
+        signal?: AbortSignal,
     ): Promise<MagmaCompletion> {
         try {
             const openai = config.providerConfig.client as OpenAI;
@@ -339,11 +349,14 @@ export class OpenAIProvider extends Provider {
             const openAIConfig = this.convertConfig(config);
 
             if (config.stream) {
-                const stream = await openai.chat.completions.create({
-                    ...openAIConfig,
-                    stream: true,
-                    stream_options: { include_usage: true },
-                });
+                const stream = await openai.chat.completions.create(
+                    {
+                        ...openAIConfig,
+                        stream: true,
+                        stream_options: { include_usage: true },
+                    },
+                    { signal },
+                );
 
                 let buffer = '';
                 const usage: MagmaUsage = {
@@ -389,9 +402,9 @@ export class OpenAIProvider extends Provider {
 
                 return magmaCompletion;
             } else {
-                const openAICompletion = (await openai.chat.completions.create(
-                    openAIConfig,
-                )) as ChatCompletion;
+                const openAICompletion = (await openai.chat.completions.create(openAIConfig, {
+                    signal,
+                })) as ChatCompletion;
 
                 const openAIMessage = openAICompletion.choices[0].message;
 
@@ -422,6 +435,9 @@ export class OpenAIProvider extends Provider {
                 return magmaCompletion;
             }
         } catch (error) {
+            if (signal?.aborted) {
+                throw new Error('Request aborted');
+            }
             if (error.response && error.response.status === 429) {
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);

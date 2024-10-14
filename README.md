@@ -30,6 +30,7 @@ Magma is a low-opinion framework allowing developers to focus on the logic and b
 ## Key Features
 
 - Support for multiple AI providers (OpenAI, Anthropic, more to come)
+- [NEW] Support for Groq (LLama 3.1, Groq-LLama 3.1, etc.)
 - Flexible tool system for extending agent capabilities
 - Middleware support for customizing agent behavior
 
@@ -77,15 +78,22 @@ const agent = new MagmaAgent(); // Default provider is OpenAI with model gpt-4o
 
 const openai = new MagmaAgent({
     providerConfig: {
-        client: new OpenAI(),
+        provider: 'openai',
         model: 'gpt-o1-mini',
     },
 });
 
 const anthropic = new MagmaAgent({
     providerConfig: {
-        client: new Anthropic(),
+        provider: 'anthropic',
         model: 'claude-3-5-sonnet-20240620',
+    },
+});
+
+const groq = new MagmaAgent({
+    providerConfig: {
+        provider: 'groq',
+        model: 'llama-3.1-8b-instant',
     },
 });
 ```

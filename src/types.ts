@@ -1,10 +1,11 @@
 /* PROVIDERS */
 
 import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import OpenAI from 'openai';
 import { ChatModel } from 'openai/resources/index.mjs';
 
-export const MagmaProviders = ['openai', 'anthropic'] as const;
+export const MagmaProviders = ['openai', 'anthropic', 'groq'] as const;
 export type MagmaProvider = (typeof MagmaProviders)[number];
 
 export type MagmaClient = OpenAI | Anthropic;
@@ -13,7 +14,9 @@ export type AnthropicModel = Anthropic.Messages.Model;
 
 export type OpenAIModel = ChatModel;
 
-export type MagmaModel = AnthropicModel | OpenAIModel;
+export type GroqModel = string;
+
+export type MagmaModel = AnthropicModel | OpenAIModel | GroqModel;
 
 export type MagmaProviderConfig =
     | {
@@ -25,6 +28,11 @@ export type MagmaProviderConfig =
           client?: Anthropic;
           provider: 'anthropic';
           model: AnthropicModel;
+      }
+    | {
+          client?: Groq;
+          provider: 'groq';
+          model: GroqModel;
       };
 
 export type MagmaToolSchema = {

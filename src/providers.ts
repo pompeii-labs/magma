@@ -29,6 +29,12 @@ import {
     ChatCompletion,
     ChatCompletionCreateParamsBase,
 } from 'openai/resources/chat/completions.mjs';
+import {
+    ChatCompletionTool as GroqTool,
+    ChatCompletionMessageParam as GroqMessageParam,
+    ChatCompletionCreateParamsBase as GroqConfig,
+} from 'groq-sdk/resources/chat/completions.mjs';
+import Groq from 'groq-sdk';
 
 dotenv.config();
 
@@ -51,6 +57,8 @@ export abstract class Provider implements ProviderProps {
                 return AnthropicProvider;
             case 'openai':
                 return OpenAIProvider;
+            case 'groq':
+                return GroqProvider;
             default:
                 throw new Error(`Can not create factory class Provider with type ${name}`);
         }
@@ -565,5 +573,234 @@ export class OpenAIProvider extends Provider {
         }
 
         return openAIMessages;
+    }
+}
+
+export class GroqProvider extends Provider {
+    static override convertConfig(config: MagmaConfig): GroqConfig {
+        const tools: GroqTool[] | undefined = config.tools
+            ? this.convertTools(config.tools)
+            : undefined;
+
+        const model = config.providerConfig.model;
+
+        let tool_choice = undefined;
+
+        if (config.tool_choice === 'auto') tool_choice = 'auto';
+        else if (config.tool_choice === 'required') tool_choice = 'required';
+        else if (typeof config.tool_choice === 'string')
+            tool_choice = { type: 'function', function: { name: config.tool_choice } };
+
+        delete config.providerConfig;
+
+        const groqConfig: GroqConfig = {
+            ...config,
+            model,
+            messages: this.convertMessages(config.messages),
+            tools,
+            tool_choice,
+            temperature: config.temperature
+                ? mapNumberInRange(config.temperature, 0, 1, 0, 2)
+                : undefined,
+        };
+
+        return groqConfig;
+    }
+
+    static override async makeCompletionRequest(
+        config: MagmaConfig,
+        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
+        attempt: number = 0,
+        signal?: AbortSignal,
+    ): Promise<MagmaCompletion> {
+        try {
+            const groq = config.providerConfig.client as Groq;
+            if (!groq) throw new Error('Groq instance not configured');
+
+            const groqConfig = this.convertConfig(config);
+
+            if (config.stream) {
+                const stream = await groq.chat.completions.create(
+                    {
+                        ...groqConfig,
+                        stream: true,
+                    },
+                    { signal },
+                );
+
+                let buffer = '';
+                const usage: MagmaUsage = {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                };
+
+                for await (const chunk of stream) {
+                    if (chunk.x_groq?.usage) {
+                        usage.input_tokens = chunk.x_groq.usage.prompt_tokens ?? 0;
+                        usage.output_tokens = chunk.x_groq.usage.completion_tokens ?? 0;
+                        continue;
+                    }
+
+                    if (onStreamChunk) {
+                        const delta = chunk.choices[0]?.delta;
+                        if (!delta?.content) continue;
+
+                        buffer += delta.content ?? '';
+
+                        const magmaChunk: MagmaStreamChunk = {
+                            id: chunk.id,
+                            provider: 'groq',
+                            model: groqConfig.model,
+                            delta: {
+                                content: delta.content,
+                                role: delta.role === 'tool' ? 'tool_call' : 'assistant',
+                            },
+                            buffer,
+                        };
+
+                        onStreamChunk(magmaChunk);
+                    }
+                }
+
+                onStreamChunk();
+                const magmaCompletion: MagmaCompletion = {
+                    provider: 'groq',
+                    model: groqConfig.model,
+                    message: { role: 'assistant', content: buffer },
+                    usage,
+                };
+
+                return magmaCompletion;
+            } else {
+                const groqCompletion = (await groq.chat.completions.create(groqConfig, {
+                    signal,
+                })) as ChatCompletion;
+
+                const groqMessage = groqCompletion.choices[0].message;
+
+                let magmaMessage: MagmaMessage;
+
+                if (groqMessage.tool_calls) {
+                    const tool_call = groqMessage.tool_calls[0];
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_call_id: tool_call.id,
+                        fn_name: tool_call.function.name,
+                        fn_args: JSON.parse(tool_call.function.arguments),
+                    };
+                } else {
+                    magmaMessage = { role: 'assistant', content: groqMessage.content };
+                }
+
+                const magmaCompletion: MagmaCompletion = {
+                    provider: 'groq',
+                    model: groqCompletion.model,
+                    message: magmaMessage,
+                    usage: {
+                        input_tokens: groqCompletion.usage.prompt_tokens,
+                        output_tokens: groqCompletion.usage.completion_tokens,
+                    },
+                };
+
+                return magmaCompletion;
+            }
+        } catch (error) {
+            if (signal?.aborted) {
+                throw new Error('Request aborted');
+            }
+            if (error.response && error.response.status === 429) {
+                if (attempt >= MAX_RETRIES) {
+                    throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
+                }
+                const delay = Math.min(Math.pow(2, attempt) * 1000, 60000);
+                Logger.main.warn(`Rate limited. Retrying after ${delay}ms.`);
+
+                await sleep(delay);
+                return this.makeCompletionRequest(config, onStreamChunk, attempt + 1);
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    static override convertTools(tools: MagmaTool[]): GroqTool[] {
+        const groqTools: GroqTool[] = [];
+
+        for (const tool of tools) {
+            const baseObject: MagmaToolParam = {
+                type: 'object',
+                properties: tool.params,
+            };
+
+            groqTools.push({
+                function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: cleanParam(baseObject, []),
+                },
+                type: 'function',
+            });
+        }
+
+        return groqTools;
+    }
+
+    static override convertMessages(messages: MagmaMessage[]): GroqMessageParam[] {
+        const groqMessages: GroqMessageParam[] = [];
+
+        for (const message of messages) {
+            if ('id' in message) delete message.id;
+
+            switch (message.role) {
+                case 'system':
+                    groqMessages.push({
+                        role: 'system',
+                        content: message.content,
+                    });
+                    break;
+
+                case 'assistant':
+                    groqMessages.push({
+                        role: 'assistant',
+                        content: message.content,
+                    });
+                    break;
+
+                case 'user':
+                    groqMessages.push({
+                        role: 'user',
+                        content: message.content,
+                    });
+                    break;
+
+                case 'tool_call':
+                    groqMessages.push({
+                        role: 'assistant',
+                        tool_calls: [
+                            {
+                                type: 'function',
+                                id: message.tool_call_id,
+                                function: {
+                                    name: message.fn_name,
+                                    arguments: JSON.stringify(message.fn_args),
+                                },
+                            },
+                        ],
+                    });
+                    break;
+
+                case 'tool_result':
+                    groqMessages.push({
+                        role: 'tool',
+                        tool_call_id: message.tool_result_id,
+                        content: message.tool_result_error
+                            ? `Something went wrong calling your last tool - \n ${message.tool_result}`
+                            : message.tool_result,
+                    });
+                    break;
+            }
+        }
+
+        return groqMessages;
     }
 }

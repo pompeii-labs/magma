@@ -19,6 +19,7 @@ import { MagmaLogger } from './logger';
 import { hash, isInstanceOf, loadTools } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 
 const MIDDLEWARE_MAX_RETRIES = 5;
 
@@ -329,6 +330,9 @@ export default class MagmaAgent {
                 break;
             case 'anthropic':
                 providerConfig.client ??= new Anthropic();
+                break;
+            case 'groq':
+                providerConfig.client ??= new Groq();
                 break;
             default:
                 throw new Error('Invalid provider');

@@ -226,6 +226,14 @@ export class AnthropicProvider extends Provider {
                     input_tokens: 0,
                     output_tokens: 0,
                 };
+
+                const streamedToolCalls: {
+                    id: string;
+                    name: string;
+                    argumentsBuffer: string;
+                    arguments: Record<string, any>;
+                }[] = [];
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk;
 
@@ -248,14 +256,41 @@ export class AnthropicProvider extends Provider {
                                     },
                                     buffer: buffer,
                                 };
+                            } else if (chunk.delta.type === 'input_json_delta') {
+                                streamedToolCalls[0].argumentsBuffer += chunk.delta.partial_json;
+                            }
+                            break;
+                        case 'content_block_start':
+                            if (chunk.content_block.type === 'tool_use') {
+                                streamedToolCalls.push({
+                                    id: chunk.content_block.id,
+                                    name: chunk.content_block.name,
+                                    argumentsBuffer: '',
+                                    arguments: {},
+                                });
                             }
                             break;
                         case 'message_stop': {
-                            onStreamChunk();
+                            let magmaMessage: MagmaMessage;
+
+                            if (streamedToolCalls.length > 0) {
+                                const toolCall = streamedToolCalls[0];
+                                toolCall.arguments = JSON.parse(toolCall.argumentsBuffer);
+                                magmaMessage = {
+                                    role: 'tool_call',
+                                    tool_call_id: toolCall.id,
+                                    fn_name: toolCall.name,
+                                    fn_args: toolCall.arguments,
+                                };
+                            } else {
+                                magmaMessage = { role: 'assistant', content: buffer };
+                                onStreamChunk();
+                            }
+
                             const magmaCompletion: MagmaCompletion = {
                                 provider: 'anthropic',
                                 model: anthropicConfig.model,
-                                message: { role: 'assistant', content: buffer },
+                                message: magmaMessage,
                                 usage: usage,
                             };
 
@@ -268,7 +303,6 @@ export class AnthropicProvider extends Provider {
                     }
                 }
             } else {
-                // console.log(anthropicConfig.messages);
                 const anthropicCompletion = (await anthropic.messages.create(anthropicConfig, {
                     signal,
                 })) as AnthropicMessage;
@@ -372,10 +406,44 @@ export class OpenAIProvider extends Provider {
                     output_tokens: 0,
                 };
 
+                const streamedToolCalls: {
+                    id: string;
+                    name: string;
+                    argumentsBuffer: string;
+                    arguments: Record<string, any>;
+                }[] = [];
+
                 for await (const chunk of stream) {
+                    const delta = chunk?.choices[0]?.delta;
+
+                    // First stream chunk telling us what tools are being called
+                    if (delta?.tool_calls?.length > 0 && streamedToolCalls.length === 0) {
+                        for (const toolCall of delta.tool_calls) {
+                            streamedToolCalls.push({
+                                id: toolCall.id,
+                                name: toolCall.function.name,
+                                argumentsBuffer: toolCall.function.arguments,
+                                arguments: {},
+                            });
+                        }
+                    } else if (delta?.tool_calls?.length > 0) {
+                        // Subsequent stream chunks with tool call results buffering up
+                        for (const toolCall of delta.tool_calls) {
+                            streamedToolCalls[toolCall.index].argumentsBuffer +=
+                                toolCall.function.arguments;
+                        }
+                    }
+
                     if (chunk.usage) {
                         usage.input_tokens = chunk.usage?.prompt_tokens ?? 0;
                         usage.output_tokens = chunk.usage?.completion_tokens ?? 0;
+                        continue;
+                    }
+
+                    if (streamedToolCalls.length > 0) {
+                        // We are still waiting for tool call results to come in
+                        // We do NOT want to buffer the delta here, as it will be conflated as completion text
+                        // and might go into a tts client unintentionally
                         continue;
                     }
 
@@ -400,11 +468,27 @@ export class OpenAIProvider extends Provider {
                     }
                 }
 
-                onStreamChunk();
+                let magmaMessage: MagmaMessage;
+                if (streamedToolCalls.length > 0) {
+                    // Convert the arguments buffer to an object
+                    const toolCall = streamedToolCalls[0];
+                    toolCall.arguments = JSON.parse(toolCall.argumentsBuffer);
+
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_call_id: toolCall.id,
+                        fn_name: toolCall.name,
+                        fn_args: toolCall.arguments,
+                    };
+                } else {
+                    onStreamChunk();
+                    magmaMessage = { role: 'assistant', content: buffer };
+                }
+
                 const magmaCompletion: MagmaCompletion = {
                     provider: 'openai',
                     model: openAIConfig.model,
-                    message: { role: 'assistant', content: buffer },
+                    message: magmaMessage,
                     usage,
                 };
 
@@ -634,10 +718,44 @@ export class GroqProvider extends Provider {
                     output_tokens: 0,
                 };
 
+                const streamedToolCalls: {
+                    id: string;
+                    name: string;
+                    argumentsBuffer: string;
+                    arguments: Record<string, any>;
+                }[] = [];
+
                 for await (const chunk of stream) {
+                    const delta = chunk?.choices[0]?.delta;
+
                     if (chunk.x_groq?.usage) {
                         usage.input_tokens = chunk.x_groq.usage.prompt_tokens ?? 0;
                         usage.output_tokens = chunk.x_groq.usage.completion_tokens ?? 0;
+                        continue;
+                    }
+
+                    // First stream chunk telling us what tools are being called
+                    if (delta?.tool_calls?.length > 0 && streamedToolCalls.length === 0) {
+                        for (const toolCall of delta.tool_calls) {
+                            streamedToolCalls.push({
+                                id: toolCall.id,
+                                name: toolCall.function.name,
+                                argumentsBuffer: toolCall.function.arguments,
+                                arguments: {},
+                            });
+                        }
+                    } else if (delta?.tool_calls?.length > 0) {
+                        // Subsequent stream chunks with tool call results buffering up
+                        for (const toolCall of delta.tool_calls) {
+                            streamedToolCalls[toolCall.index].argumentsBuffer +=
+                                toolCall.function.arguments;
+                        }
+                    }
+
+                    if (streamedToolCalls.length > 0) {
+                        // We are still waiting for tool call results to come in
+                        // We do NOT want to buffer the delta here, as it will be conflated as completion text
+                        // and might go into a tts client unintentionally
                         continue;
                     }
 
@@ -662,11 +780,27 @@ export class GroqProvider extends Provider {
                     }
                 }
 
-                onStreamChunk();
+                let magmaMessage: MagmaMessage;
+                if (streamedToolCalls.length > 0) {
+                    // Convert the arguments buffer to an object
+                    const toolCall = streamedToolCalls[0];
+                    toolCall.arguments = JSON.parse(toolCall.argumentsBuffer);
+
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_call_id: toolCall.id,
+                        fn_name: toolCall.name,
+                        fn_args: toolCall.arguments,
+                    };
+                } else {
+                    onStreamChunk();
+                    magmaMessage = { role: 'assistant', content: buffer };
+                }
+
                 const magmaCompletion: MagmaCompletion = {
                     provider: 'groq',
                     model: groqConfig.model,
-                    message: { role: 'assistant', content: buffer },
+                    message: magmaMessage,
                     usage,
                 };
 

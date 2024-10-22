@@ -40,7 +40,10 @@ export async function cliChatbotDemo() {
         if (message.toUpperCase() === 'QUIT') {
             rl.close();
         } else {
-            agent.addMessage(message);
+            agent.addMessage({
+                role: 'user',
+                content: message,
+            });
             const reply = await agent.main();
             Logger.main.info(reply.content);
             rl.prompt();

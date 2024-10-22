@@ -347,8 +347,22 @@ export default class MagmaAgent {
      * @param content content of the message to store
      * @param role message role (default: user)
      */
-    public addMessage(content: string, role: 'system' | 'assistant' | 'user' = 'user'): void {
-        this.messages.push({ role, content });
+    public addMessage(message: MagmaMessage): void {
+        this.messages.push(message);
+    }
+
+    /**
+     * Remove a message from the agent context
+     * If no filter is provided, the last message is removed
+     *
+     * @param filter optional filter to remove a specific message
+     */
+    public removeMessage(filter?: (message: MagmaMessage) => boolean): void {
+        if (filter) {
+            this.messages = this.messages.filter(filter);
+        } else {
+            this.messages.pop();
+        }
     }
 
     /**
@@ -507,7 +521,10 @@ export default class MagmaAgent {
                 this.messages.pop();
             }
 
-            this.addMessage(middlewareErrors.join('\n'), 'system');
+            this.addMessage({
+                role: 'system',
+                content: middlewareErrors.join('\n'),
+            });
 
             return true;
         } else {

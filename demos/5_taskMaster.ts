@@ -54,7 +54,10 @@ class TaskMaster extends MagmaAgent {
      */
     public async receive(message: any): Promise<void> {
         // Add user message into context
-        this.addMessage(message, 'user');
+        this.addMessage({
+            role: 'user',
+            content: message,
+        });
 
         // Create reply and print it out
         const reply = await this.main();

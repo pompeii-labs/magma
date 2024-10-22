@@ -67,7 +67,7 @@ export type MagmaToolParam = {
 export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
 
 // Target in-code function that a MagmaTool maps to
-export type MagmaToolTarget = (args: Record<string, any>, state?: State) => Promise<string>;
+export type MagmaToolTarget = (args: MagmaToolCall, state?: State) => Promise<string>;
 // Tool type containing the json schema sent to the LLM and the target to be called with the generated args
 export type MagmaTool = {
     name: string;

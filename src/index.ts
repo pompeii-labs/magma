@@ -201,7 +201,7 @@ export default class MagmaAgent {
 
         // If the tool call is not `inConversation`, we just return the result
         if (!args.inConversation) {
-            const result = await tool.target(call.fn_args, this.state);
+            const result = await tool.target(call, this.state);
 
             await this.runMiddleware('onToolExecution', result);
 
@@ -212,7 +212,7 @@ export default class MagmaAgent {
         try {
             this.messages.push(call);
 
-            const result = await tool.target(call.fn_args, this.state);
+            const result = await tool.target(call, this.state);
 
             await this.runMiddleware('onToolExecution', result);
 
@@ -436,7 +436,7 @@ export default class MagmaAgent {
             const tool = this.tools.find((t) => t.name === call.fn_name);
             if (!tool) throw new Error(`No tool found to handle call for ${call.fn_name}()`);
 
-            const result = await tool.target(call.fn_args, this.state);
+            const result = await tool.target(call, this.state);
             if (!result) {
                 this.logger?.warn(`Tool execution failed for ${call.fn_name}()`);
 

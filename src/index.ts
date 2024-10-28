@@ -32,8 +32,7 @@ import { WebSocket } from 'ws';
 
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
-// const kMagmaFlowEndpoint = 'api.magmaflow.dev';
-const kMagmaFlowEndpoint = 'magma.ngrok.app';
+const kMagmaFlowEndpoint = process.env.MODE === 'dev' ? 'magma.ngrok.app' : 'api.magmaflow.dev';
 
 export interface MagmaFlowEvents {
     audio: (chunk: Buffer) => void;

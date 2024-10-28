@@ -55,7 +55,7 @@ export interface MagmaFlowEvents {
  * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
  */
 type AgentProps = {
-    id?: string;
+    agentId?: string;
     providerConfig?: MagmaProviderConfig;
     apiKey?: string;
     fetchSystemPrompts?: () => MagmaSystemMessage[];
@@ -68,7 +68,7 @@ type AgentProps = {
 };
 
 export default class MagmaAgent extends EventEmitter {
-    id?: string;
+    agentId?: string;
     logger?: MagmaLogger;
     state: State;
     stream: boolean = false;
@@ -135,7 +135,7 @@ export default class MagmaAgent extends EventEmitter {
             this.onUsageUpdate = args.onUsageUpdate;
         }
 
-        this.id = args.id;
+        this.agentId = args.agentId;
         this.logger = args.logger;
 
         this.state = new Map();
@@ -574,7 +574,7 @@ export default class MagmaAgent extends EventEmitter {
 
             // Scrape agent to create config
             const config = {
-                agent_id: this.id,
+                agent_id: this.agentId,
                 tts: this.ttsConfig,
                 stt: this.sttConfig,
                 provider: this.providerName,

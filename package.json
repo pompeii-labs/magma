@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "The unopinionated framework to build better agents",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,7 @@
   "author": "Pompeii Labs, Inc.",
   "license": "Apache-2.0",
   "devDependencies": {
+    "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "eslint": "^8.57.0",

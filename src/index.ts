@@ -437,18 +437,21 @@ export default class MagmaAgent extends EventEmitter {
             throw new Error('Provider client or provider must be defined');
         }
 
-        switch (providerConfig.provider) {
-            case 'openai':
-                providerConfig.client ??= new OpenAI();
-                break;
-            case 'anthropic':
-                providerConfig.client ??= new Anthropic();
-                break;
-            case 'groq':
-                providerConfig.client ??= new Groq();
-                break;
-            default:
-                throw new Error('Invalid provider');
+        // Set the client based on the provider if not provided
+        if (!providerConfig.client) {
+            switch (providerConfig.provider) {
+                case 'openai':
+                    providerConfig.client ??= new OpenAI();
+                    break;
+                case 'anthropic':
+                    providerConfig.client ??= new Anthropic();
+                    break;
+                case 'groq':
+                    providerConfig.client ??= new Groq();
+                    break;
+                default:
+                    throw new Error('Invalid provider');
+            }
         }
 
         this.providerConfig = providerConfig;

@@ -67,7 +67,7 @@ export type MagmaToolParam = {
 export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
 
 // Target in-code function that a MagmaTool maps to
-export type MagmaToolTarget = (args: MagmaToolCall, state?: State) => Promise<string>;
+export type MagmaToolTarget = (call: MagmaToolCall, state?: State) => Promise<string>;
 // Tool type containing the json schema sent to the LLM and the target to be called with the generated args
 export type MagmaTool = {
     name: string;
@@ -180,3 +180,51 @@ export type MagmaStreamChunk = {
         output_tokens?: number;
     };
 };
+
+/* MAGMA FLOW */
+
+export type SocketMessageType =
+    | 'message'
+    | 'error'
+    | 'audio.chunk'
+    | 'audio.commit'
+    | 'config'
+    | 'abort'
+    // Only used by the SDK
+    | 'usage'
+    | 'stream.chunk';
+
+export interface SocketMessage {
+    type: SocketMessageType;
+    data: any;
+    agent_id?: string;
+    request_id?: string;
+}
+export interface TTSConfig {
+    client: TTSClientType;
+    voice?: string;
+}
+
+export type STTMode = 'vad' | 'manual' | 'none';
+
+export interface STTConfig {
+    mode: STTMode;
+    sampleRate?: number;
+    encoding?: string;
+}
+
+export interface MagmaFlowConfig {
+    system_prompts?: MagmaSystemMessage[];
+    tools?: Omit<MagmaTool, 'target'>[];
+    agent_id?: string;
+    provider?: string;
+    model?: string;
+    tts?: TTSConfig;
+    stt?: STTConfig;
+}
+
+export enum TTSClientType {
+    ELEVENLABS = 'elevenlabs',
+    WHISPER = 'whisper',
+    DEEPGRAM = 'deepgram',
+}

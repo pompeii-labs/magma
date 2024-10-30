@@ -32,7 +32,7 @@ import { WebSocket } from 'ws';
 
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
-const kMagmaFlowEndpoint = process.env.MODE === 'dev' ? 'magma.ngrok.app' : 'api.magmaflow.dev';
+const kMagmaFlowEndpoint = 'api.magmaflow.dev';
 
 export interface MagmaFlowEvents {
     audio: (chunk: Buffer) => void;
@@ -89,9 +89,9 @@ export default class MagmaAgent extends EventEmitter {
     private connected: boolean = false;
     private queue: Promise<void>[] = [];
     // Used to track the number of tools sent to Magma Flow, so we can update the list of tools on the fly
-    private lastToolCount: number = 0;
+    private lastToolHash: number = 0;
     // Same as above, but for system prompts
-    private lastSystemPromptCount: number = 0;
+    private lastSystemPromptHash: number = 0;
 
     constructor(args?: AgentProps) {
         // Initialize the EventEmitter
@@ -177,12 +177,42 @@ export default class MagmaAgent extends EventEmitter {
         return;
     }
 
+    onCleanup(): Promise<void> {
+        return;
+    }
+
     public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
         throw new Error('Agent.setup function not implemented');
     }
 
     public async cleanup(): Promise<void> {
-        throw new Error('Agent.cleanup function not implemented');
+        try {
+            await this.onCleanup();
+        } catch (error) {
+            this.logger?.error(`Error during cleanup: ${error.message ?? 'Unknown'}`);
+        } finally {
+            this._cleanup();
+        }
+    }
+
+    private async _cleanup(): Promise<void> {
+        this.lastToolHash = 0;
+        this.lastSystemPromptHash = 0;
+        this.abortController = null;
+
+        // Disconnect from MagmaFlow and event emitters
+        if (this.magmaFlowSocket?.readyState === WebSocket.OPEN) {
+            this.magmaFlowSocket?.close();
+            this.magmaFlowSocket = null;
+            this.connected = false;
+            this.emit('disconnected');
+        }
+
+        this.removeAllListeners();
+
+        this.messages = [];
+
+        this.logger?.debug('Agent cleanup complete');
     }
 
     /**
@@ -312,13 +342,13 @@ export default class MagmaAgent extends EventEmitter {
                 const lastMessage = this.messages.at(-1);
 
                 const configUpdates: Partial<MagmaFlowConfig> = {};
-                if (this.lastToolCount !== this.tools.length) {
-                    this.lastToolCount = this.tools.length;
+                if (this.lastToolHash !== hash(JSON.stringify(this.tools))) {
+                    this.lastToolHash = hash(JSON.stringify(this.tools));
                     configUpdates.tools = this.tools;
                 }
 
-                if (this.lastSystemPromptCount !== this.fetchSystemPrompts().length) {
-                    this.lastSystemPromptCount = this.fetchSystemPrompts().length;
+                if (this.lastSystemPromptHash !== hash(JSON.stringify(this.fetchSystemPrompts()))) {
+                    this.lastSystemPromptHash = hash(JSON.stringify(this.fetchSystemPrompts()));
                     configUpdates.system_prompts = this.fetchSystemPrompts();
                 }
 
@@ -397,9 +427,9 @@ export default class MagmaAgent extends EventEmitter {
                 this.onUsageUpdate(completion.usage);
 
                 message = completion.message;
-            }
 
-            this.messages.push(message);
+                this.messages.push(message);
+            }
 
             if (message.role === 'tool_call') {
                 await this.runMiddleware('preToolExecution', message);

@@ -1,13 +1,35 @@
 #!/bin/sh
 
+# Add forbidden strings
+FORBIDDEN_STRINGS="magma.ngrok.app"
+
+# Check for forbidden strings in staged files
+for file in $(git diff --cached --name-only); do
+    for pattern in $FORBIDDEN_STRINGS; do
+        if git diff --cached "$file" | grep -q "$pattern"; then
+            echo "Error: Forbidden string '$pattern' found in $file"
+            echo "Please remove this string before committing."
+            exit 1
+        fi
+    done
+done
+
 # Stash unstaged changes
 git stash -q --keep-index
+
+# Store originally staged files
+STAGED_FILES=$(git diff --cached --name-only)
 
 # Run lint and format
 npm run lint-format
 
 # Store the last exit code
 RESULT=$?
+
+# Add back only the files that were originally staged
+for file in $STAGED_FILES; do
+    git add "$file"
+done
 
 # Unstash changes
 git stash pop -q
@@ -17,9 +39,6 @@ if [ $RESULT -ne 0 ]; then
     echo "Linting or formatting failed. Please fix the issues and try committing again."
     exit 1
 fi
-
-# Add any changes made by the linter/formatter
-git add -A
 
 # Echo
 echo "Linting and formatting check passed"

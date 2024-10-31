@@ -3,13 +3,11 @@
 </div>
 
 <br/>
+
+<div align="center"><strong>Build AI agents in 5 minutes, not 5 days.</strong></div>
+<div align="center">After trying all of the popular frameworks in the last year, we felt they were all far too complex. So we built Magma.</div>
+
 <br/>
-
-<div align="center"><strong>A powerful framework for building AI Agents with ease and flexibility.</strong><br> Magma is an open-source framework that simplifies the process of creating, managing, and deploying AI agents for various applications.
-<br />
-<br />
-
-</div>
 
 <div align="center">
 
@@ -19,201 +17,220 @@
 
 </div>
 
-<br/>
+## 🌋 What is Magma?
 
-## What is Magma?
+Magma is a framework that lets you create AI agents without the headache. No complex chains, no confusing abstractions - just write the logic you want your agent to have.
 
-Magma is a low-opinion framework allowing developers to focus on the logic and behavior of their agents, rather than dealing with useless abstractions. It gives you greater visibility and control over an agent's process as it occurs.
+Want to try it out? [Chat with Dialog](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff), our user research agent built with Magma!
 
-[Have feedback / requests? Chat with Dialog, our user research agent powered by Magma!](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff)
+## ⚡️ Quick Start
 
-## Key Features
-
-- Support for multiple AI providers (OpenAI, Anthropic, more to come)
-- [NEW] Support for Groq (LLama 3.1, Groq-LLama 3.1, etc.)
-- Flexible tool system for extending agent capabilities
-- Middleware support for customizing agent behavior
-
-## Installation
-
-You can install Magma using npm:
+1. Install Magma:
 ```bash
 npm i @pompeii-labs/magma
 ```
 
-## Quick Start
-
-Here's a simple example of creating an AI agent using Magma:
-
+2. Create your first agent:
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
 
+// That's it! You've got a working agent
+const agent = new MagmaAgent();
 
-async function main() {
-    const agent = new MagmaAgent();
-    
-    agent.fetchSystemPrompts = () => [
-        {
-            role: "system",
-            content: "Welcome the user to the Magma framework by Pompeii Labs",
-        },
-    ];
-    const reply = await agent.main();
-    console.log("Agent: " + reply.content);
-}
+// Want to give it some personality? Add system prompts:
+agent.fetchSystemPrompts = () => [{
+    role: "system",
+    content: "You are a friendly assistant who loves dad jokes"
+}];
 
-main();
+// Need the agent to do something? Add tools:
+agent.fetchTools = () => [{
+    name: "tell_joke",
+    description: "Tell a dad joke",
+    target: async () => {
+        return "Why don't eggs tell jokes? They'd crack up! 🥚";
+    }
+}];
+
+// Run it:
+const reply = await agent.main();
+console.log(reply.content);
 ```
 
-### Providers
+## 🔥 Key Features
 
-Magma providers all conform to Magma types, meaning you can now use different LLM providers in the same code without having to do type conversion
+- **Simple**: Build agents in minutes with minimal code
+- **Flexible**: Use any AI provider (OpenAI, Anthropic, Groq)
+- **Powerful**: Add tools and middleware when you need them
+- **Observable**: See exactly what your agent is doing
+
+## 🚀 MagmaFlow
+
+Want even more power? MagmaFlow gives you instant access to:
+- Voice input/output
+- Streaming responses
+- Tool execution
+- Usage tracking
+- And more!
 
 ```ts
-import { MagmaAgent } from "@pompeii-labs/magma";
-import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
+const agent = new MagmaAgent({
+    apiKey: "mf_..." // Get your key at magmaflow.dev
+});
+```
 
-const agent = new MagmaAgent(); // Default provider is OpenAI with model gpt-4o
+> 🎉 MagmaFlow is currently in private beta! [Join the waitlist](https://magmaflow.pompeiilabs.com) to get early access.
 
-const openai = new MagmaAgent({
+## 🛠 Examples
+
+### Add Tools
+```ts
+import { MagmaAgent, toolparam } from "@pompeii-labs/magma";
+
+/** Decorate any agent class method with @toolparam or @tool. 
+ * @tool is used to define the tool itself
+ * @toolparam is used to define the parameters of the tool (key, type, description, required)
+ */
+class MyAgent extends MagmaAgent {
+
+    @toolparam({ key: 'city', type: 'string' })
+    async getWeather({ city }) {
+        return `It's sunny in ${city}! 🌞`;
+    }
+}
+```
+
+### Add Middleware
+```ts
+import { MagmaAgent, middleware } from "@pompeii-labs/magma";
+
+/**
+ * Decorate any agent class method with @middleware to add custom logging, validation, etc.
+ * Types: "preCompletion", "onCompletion", "preToolExecution", "onToolExecution"
+ */
+class MyAgent extends MagmaAgent {
+
+    @middleware("preCompletion")
+    async logBeforeCompletion(message) {
+        console.log("About to generate a response!");
+    }
+}
+```
+
+### Use Different Providers
+```ts
+// Use OpenAI (default)
+const openai = new MagmaAgent();
+
+// Use Anthropic
+const claude = new MagmaAgent({
     providerConfig: {
-        provider: 'openai',
-        model: 'gpt-o1-mini',
-    },
+        provider: "anthropic",
+        model: "claude-3.5-sonnet-20240620"
+    }
 });
 
-const anthropic = new MagmaAgent({
-    providerConfig: {
-        provider: 'anthropic',
-        model: 'claude-3-5-sonnet-20240620',
-    },
-});
-
+// Use Groq
 const groq = new MagmaAgent({
     providerConfig: {
-        provider: 'groq',
-        model: 'llama-3.1-8b-instant',
-    },
+        provider: "groq",
+        model: "llama-3.1-70b-versatile"
+    }
 });
 ```
 
-### Class Extensions
-
-The `MagmaAgent` class can be instantiated as-is with `new MagmaAgent()` or extended for more custom functionality
-
+### Core Methods
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
-import { middleware, tool } from "@pompeii-labs/magma/decorators";
 
 class MyAgent extends MagmaAgent {
-    myState: any[] = [];
-
-    constructor() {
-        super();
+    // Initialize your agent
+    async setup() {
+        // Load resources, connect to databases, etc.
+        await this.loadDatabase();
+        return "I'm ready to help!";
     }
 
-    @tool({ name: 'my_tool', description: 'This is my tool' })
-    async myTool() {}
-
-    @middleware('onCompletion')
-    async myMiddleware() {}
-}
-```
-
-### Easy Tool Definitions
-
-Use `@tool` and `@toolparam` decorators to tell your agent which methods are tools it has available. These tools can be called by the agent naturally, or force-called using the `agent.trigger(...)` method
-
-```ts
-import { MagmaAgent } from "@pompeii-labs/magma";
-import { tool, toolparam } from "@pompeii-labs/magma/decorators";
-
-class MyAgent extends MagmaAgent {
-    constructor() {
-        super();
-    }
-
-    @tool({ name: 'greet', description: 'Greet the user' })
-    @toolparam({ key: 'name', type: 'string', description: 'Name of the user', required: true })
-    async greet(args: { name: string }) {
-        return `Hello, ${args.name}!`;
-    }
-}
-```
-
-### Introducing Middleware
-
-With `@middleware` you can define different middleware functions to perform data validation, logging, and other vital operations **during** the agent's process. Now you have complete control over the flow of data, whereas other frameworks leave you in the dark as to what's happening under the hood.
-
-```ts
-import { MagmaAgent } from "@pompeii-labs/magma";
-import { middleware } from "@pompeii-labs/magma/decorators";
-import { MagmaMessage, MagmaUserMessage } from "@pompeii-labs/magma/types";
-
-class MyAgent extends MagmaAgent {
-    constructor() {
-        super();
-    }
-
-    @middleware('preCompletion') // other options include postCompletion, preToolExecution, postToolExecution
-    async checkFizzBuzz(message: MagmaMessage) {
-        const userMessage = message as MagmaUserMessage;
-
-        if (userMessage.content.includes('fizz'))
-            return 'The user has said fizz, you must respond with the word buzz';
-    }
-}
-```
-
-### Custom State Management
-
-Use `setup(...)` to initialize any asynchronous data or arguments you need to properly manage your agent's state.
-
-```ts
-import { MagmaAgent } from "@pompeii-labs/magma";
-import { MagmaSystemMessage } from "@pompeii-labs/magma/types";
-
-class MyAgent extends MagmaAgent {
-    private job: 'project manager' | 'weatherman';
-
-    constructor() {
-        super();
-    }
-
-    async setup(opts?: { job: 'project manager' | 'weatherman' }) {
-        if (opts?.job) {
-            this.job = opts.job;
+    // Handle incoming messages
+    async receive(message: any) {
+        // Process user input before main() is called
+        if (message.type === 'image') {
+            await this.processImage(message.content);
         }
     }
 
-    fetchSystemPrompts(): MagmaSystemMessage[] {
-        switch (this.job) {
-            case 'project manager':
-                return [{ role: 'system', content: 'You are a project manager. Keep the team on track' }];
-            case 'weatherman':
-                return [{ role: 'system', content: 'You are a weather reporter, keep the user up to date on the locations they care about' }];
-        }
+    // Clean up resources
+    async cleanup();
+
+    // Manually trigger a specific tool
+    async trigger({ name: "get_weather" });
+
+    // Stop the current execution
+    kill();
+}
+```
+
+### Event Handlers
+```ts
+import { MagmaAgent } from "@pompeii-labs/magma";
+
+class MyAgent extends MagmaAgent {
+    // Handle agent shutdown
+    async onCleanup() {
+        console.log("Agent shutting down...");
+    }
+
+    // Handle errors
+    async onError(error: Error) {
+        console.error("Something went wrong:", error);
+        await this.notifyAdmin(error);
+    }
+
+    // Track token usage
+    async onUsageUpdate(usage: MagmaUsage) {
+        await this.saveUsageMetrics(usage);
+    }
+
+    // Process streaming responses
+    async onStreamChunk(chunk: MagmaStreamChunk) {
+        console.log("Received chunk:", chunk.content);
+    }
+
+    // MagmaFlow Handlers
+    async onConnect() {
+        console.log("Connected to MagmaFlow!");
+    }
+
+    // Handle agent disconnection from MagmaFlow
+    async onDisconnect() {
+        console.log("Disconnected from MagmaFlow");
+    }
+
+    // Handle incoming audio chunks
+    async onAudioChunk(chunk: Buffer) {
+        // Process incoming audio
+        await this.processAudioChunk(chunk);
+    }
+
+    // Handle audio stream completion
+    async onAudioCommit() {
+        // Audio stream complete
+        await this.finalizeAudioProcessing();
+    }
+
+    // Handle request abortion
+    async onAbort() {
+        await this.cleanup();
     }
 }
 ```
 
-# Documentation
+## 📚 Want More?
 
-Detailed documentation coming soon!
+- Check out our [examples](https://github.com/pompeii-labs/magma/tree/main/demos)
+- Join our [Discord](https://discord.gg/NShaQZmhpr)
+- Star us on [GitHub](https://github.com/pompeii-labs/magma)
 
-# Examples
-
-Try looking through the examples in the `demos/` folder. You can also clone the repo and run through each demo to get an idea of how to use Magma and how it works.
-
-To run one of the demos, pick one of the approved demo names and run `npm run demo <DEMO_NAME>`.
-Available demos:
-- hello
-- tools
-- chatbot
-- middleware
-- taskMaster
-
-# License
+## 📝 License
 
 Magma is [Apache 2.0 licensed](LICENSE).

@@ -23,7 +23,6 @@ import {
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { EventEmitter } from 'events';
 import { hash, loadTools } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
@@ -33,16 +32,6 @@ import { WebSocket } from 'ws';
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
 const kMagmaFlowEndpoint = 'api.magmaflow.dev';
-
-export interface MagmaFlowEvents {
-    audio: (chunk: Buffer) => void;
-    stream: (chunk: MagmaStreamChunk) => void;
-    commit: () => void;
-    abort: () => void;
-    error: (error: Error) => void;
-    connected: () => void;
-    disconnected: () => void;
-}
 
 /**
  * provider: 'openai' | 'anthropic' (optional)(default openai)
@@ -67,7 +56,7 @@ type AgentProps = {
     messageContext?: number;
 };
 
-export default class MagmaAgent extends EventEmitter {
+export default class MagmaAgent {
     agentId?: string;
     logger?: MagmaLogger;
     state: State;
@@ -94,9 +83,6 @@ export default class MagmaAgent extends EventEmitter {
     private lastSystemPromptHash: number = 0;
 
     constructor(args?: AgentProps) {
-        // Initialize the EventEmitter
-        super();
-
         args ??= {};
 
         if (args.apiKey && args.apiKey.startsWith('mf_')) {
@@ -153,34 +139,6 @@ export default class MagmaAgent extends EventEmitter {
         return this.providerConfig.provider;
     }
 
-    fetchTools(): MagmaTool[] {
-        return [];
-    }
-
-    fetchMiddleware(): MagmaMiddleware[] {
-        return [];
-    }
-
-    fetchSystemPrompts(): MagmaSystemMessage[] {
-        return [];
-    }
-
-    onError(error: Error): Promise<void> {
-        throw error;
-    }
-
-    onStreamChunk(chunk: MagmaStreamChunk): Promise<void> {
-        return;
-    }
-
-    onUsageUpdate(usage: object): Promise<void> {
-        return;
-    }
-
-    onCleanup(): Promise<void> {
-        return;
-    }
-
     public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
         throw new Error('Agent.setup function not implemented');
     }
@@ -202,13 +160,8 @@ export default class MagmaAgent extends EventEmitter {
 
         // Disconnect from MagmaFlow and event emitters
         if (this.magmaFlowSocket?.readyState === WebSocket.OPEN) {
-            this.magmaFlowSocket?.close();
-            this.magmaFlowSocket = null;
-            this.connected = false;
-            this.emit('disconnected');
+            this.magmaFlowSocket?.close(1000, 'Agent cleanup');
         }
-
-        this.removeAllListeners();
 
         this.messages = [];
 
@@ -514,6 +467,14 @@ export default class MagmaAgent extends EventEmitter {
     }
 
     /**
+     * Set the messages for the agent
+     * @param messages messages to set
+     */
+    public setMessages(messages: MagmaMessage[]): void {
+        this.messages = messages;
+    }
+
+    /**
      * Remove a message from the agent context
      * If no filter is provided, the last message is removed
      *
@@ -551,17 +512,6 @@ export default class MagmaAgent extends EventEmitter {
             this.abortController.abort();
             this.abortController = null;
         }
-    }
-
-    public on<K extends keyof MagmaFlowEvents>(event: K, listener: MagmaFlowEvents[K]): this {
-        return super.on(event, listener);
-    }
-
-    public emit<K extends keyof MagmaFlowEvents>(
-        event: K,
-        ...args: Parameters<MagmaFlowEvents[K]>
-    ): boolean {
-        return super.emit(event, ...args);
     }
 
     public abort(): void {
@@ -602,7 +552,7 @@ export default class MagmaAgent extends EventEmitter {
 
         this.magmaFlowSocket.on('open', () => {
             this.connected = true;
-            this.emit('connected');
+            this.onConnect();
             this.logger?.debug('Connected to Magma Flow');
 
             // Scrape agent to create config
@@ -631,11 +581,12 @@ export default class MagmaAgent extends EventEmitter {
         this.magmaFlowSocket.on('close', (code) => {
             this.connected = false;
             this.logger?.debug('Disconnected from Magma Flow');
-            this.emit('disconnected');
-            this.magmaFlowSocket = null;
+            this.onDisconnect();
 
             // If the connection was not closed cleanly, we should try to reconnect
-            if (code !== 1000) {
+            if (code === 1000) {
+                this.magmaFlowSocket = null;
+            } else {
                 setTimeout(() => {
                     this.connectToMagmaFlow();
                 }, 1000);
@@ -659,17 +610,17 @@ export default class MagmaAgent extends EventEmitter {
                     break;
                 case 'audio.chunk': {
                     const buffer = Buffer.from(data.data, 'base64');
-                    this.emit('audio', buffer);
+                    this.onAudioChunk(buffer);
                     break;
                 }
                 case 'audio.commit':
-                    this.emit('commit');
+                    this.onAudioCommit();
                     break;
                 case 'abort':
-                    this.emit('abort');
+                    this.onAbort();
                     break;
                 case 'stream.chunk':
-                    this.emit('stream', data.data);
+                    this.onStreamChunk(data.data);
                     break;
                 case 'usage':
                     this.onUsageUpdate(data.data);
@@ -870,11 +821,63 @@ export default class MagmaAgent extends EventEmitter {
         }
     }
 
+    /* GETTERS */
+
     private get tools(): MagmaTool[] {
         return [...this.defaultTools, ...this.fetchTools()];
     }
 
     private get middleware(): MagmaMiddleware[] {
         return [...this.defaultMiddleware, ...this.fetchMiddleware()];
+    }
+
+    /* EVENT HANDLERS */
+
+    fetchTools(): MagmaTool[] {
+        return [];
+    }
+
+    fetchMiddleware(): MagmaMiddleware[] {
+        return [];
+    }
+
+    fetchSystemPrompts(): MagmaSystemMessage[] {
+        return [];
+    }
+
+    onError(error: Error): Promise<void> {
+        throw error;
+    }
+
+    onStreamChunk(chunk: MagmaStreamChunk): Promise<void> {
+        return;
+    }
+
+    onUsageUpdate(usage: object): Promise<void> {
+        return;
+    }
+
+    onCleanup(): Promise<void> {
+        return;
+    }
+
+    onConnect(): Promise<void> {
+        return;
+    }
+
+    onDisconnect(): Promise<void> {
+        return;
+    }
+
+    onAudioChunk(chunk: Buffer): Promise<void> {
+        return;
+    }
+
+    onAudioCommit(): Promise<void> {
+        return;
+    }
+
+    onAbort(): Promise<void> {
+        return;
     }
 }

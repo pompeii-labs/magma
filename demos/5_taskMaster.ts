@@ -40,8 +40,8 @@ class TaskMaster extends MagmaAgent {
      * - Checking user authentication
      * - Websocket setup
      */
-    public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
-        this.tasks = await this.getTasks();
+    public async setup(opts: { numTasks?: number }): Promise<MagmaAssistantMessage | void> {
+        this.tasks = await this.getTasks(opts?.numTasks);
 
         return await this.main();
     }
@@ -145,7 +145,7 @@ class TaskMaster extends MagmaAgent {
         return 'Success';
     }
 
-    async getTasks(): Promise<Task[]> {
+    async getTasks(numTasks: number = 3): Promise<Task[]> {
         return [
             {
                 id: 1,
@@ -162,7 +162,7 @@ class TaskMaster extends MagmaAgent {
                 title: 'Delete production db',
                 completed: false,
             },
-        ];
+        ].slice(0, numTasks);
     }
 }
 
@@ -176,7 +176,7 @@ export async function taskMasterDemo() {
     });
 
     // Setup TaskMaster agent and print out the first message
-    const conversationStarter = await tm.setup();
+    const conversationStarter = await tm.setup({ numTasks: 3 });
     conversationStarter && Logger.main.info(conversationStarter.content);
 
     rl.prompt();

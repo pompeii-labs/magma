@@ -52,6 +52,11 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
     }
 };
 
+/**
+ * Helper function to load tools from a class or instance of a class
+ * @param target class or instance of a class to load tools from
+ * @returns array of MagmaTool objects
+ */
 export function loadTools(target: any) {
     const isClass = /^\s*class\s+/.test(target.toString());
     const isInstance = typeof target === 'object' && !isClass ? true : false;

@@ -7,17 +7,13 @@ import {
     MagmaSystemMessage,
     MagmaTool,
     MagmaToolCall,
-    MagmaToolParam,
-    MagmaUsage,
     MagmaMiddleware,
     MagmaMiddlewareTriggerType,
-    State,
+    MagmaState,
     MagmaStreamChunk,
     MagmaToolResult,
-    SocketMessage,
+    MagmaFlowMessage,
     MagmaFlowConfig,
-    TTSClientType,
-    MagmaCompletion,
     TTSConfig,
     STTConfig,
 } from './types';
@@ -59,7 +55,7 @@ type AgentProps = {
 export default class MagmaAgent {
     agentId?: string;
     logger?: MagmaLogger;
-    state: State;
+    state: MagmaState;
     stream: boolean = false;
     private providerConfig: MagmaProviderConfig;
     private retryCount: number;
@@ -140,7 +136,8 @@ export default class MagmaAgent {
     }
 
     public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
-        throw new Error('Agent.setup function not implemented');
+        opts;
+        throw new Error(`Agent.setup function not implemented`);
     }
 
     public async cleanup(): Promise<void> {
@@ -324,10 +321,10 @@ export default class MagmaAgent {
                         // Handle incoming messages from Magma Flow
                         const messageHandler = (message: MessageEvent) => {
                             try {
-                                const data = JSON.parse(message.toString()) as SocketMessage;
+                                const data = JSON.parse(message.toString()) as MagmaFlowMessage;
                                 if (data.type === 'message' && data.data.role === 'assistant') {
                                     cleanup();
-                                    resolve(data.data as MagmaMessage);
+                                    resolve(data.data);
                                 }
                             } catch (error) {
                                 cleanup();
@@ -602,7 +599,7 @@ export default class MagmaAgent {
      */
     private async handleMagmaFlowMessage(message: MessageEvent): Promise<void> {
         try {
-            const data = JSON.parse(message.toString()) as SocketMessage;
+            const data = JSON.parse(message.toString()) as MagmaFlowMessage;
 
             switch (data.type) {
                 case 'error':
@@ -653,7 +650,7 @@ export default class MagmaAgent {
      * Send a message to Magma Flow
      * @param message message to send
      */
-    private sendToMagmaFlow(message: SocketMessage): void {
+    private sendToMagmaFlow(message: MagmaFlowMessage): void {
         if (!this.magmaFlowSocket || this.magmaFlowSocket.readyState !== WebSocket.OPEN) return;
 
         this.magmaFlowSocket.send(JSON.stringify(message));
@@ -850,10 +847,12 @@ export default class MagmaAgent {
     }
 
     onStreamChunk(chunk: MagmaStreamChunk): Promise<void> {
+        chunk;
         return;
     }
 
     onUsageUpdate(usage: object): Promise<void> {
+        usage;
         return;
     }
 
@@ -870,6 +869,7 @@ export default class MagmaAgent {
     }
 
     onAudioChunk(chunk: Buffer): Promise<void> {
+        chunk;
         return;
     }
 

@@ -10,7 +10,7 @@ import { MagmaToolTarget, MagmaAssistantMessage } from '../src/types';
  * They're expected to return a string, which is the result of the function execution
  */
 const fetchLinearTasks: MagmaToolTarget = async (args: Record<string, any>) => {
-    return 'Matty has 2 tickets due today on the engineering board, and 3 in marketing';
+    return `For ${args.n_days} days: Matty has 2 tickets due today on the engineering board, and 3 in marketing`;
 };
 
 export async function toolDemo() {

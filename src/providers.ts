@@ -14,7 +14,6 @@ import {
     MagmaStreamChunk,
     MagmaUsage,
 } from './types';
-import { ChatCompletionCreateParamsNonStreaming } from 'openai/src/resources/index.js';
 import {
     MessageCreateParamsBase as AnthropicConfig,
     MessageParam as AnthropicMessageParam,
@@ -65,6 +64,7 @@ export abstract class Provider implements ProviderProps {
     }
 
     static convertMessages(messages: MagmaMessage[]): object[] {
+        messages;
         throw new Error('Provider.convertMessages not implemented');
     }
 
@@ -74,14 +74,20 @@ export abstract class Provider implements ProviderProps {
         attempt: number = 0,
         signal?: AbortSignal,
     ): Promise<MagmaCompletion> {
+        config;
+        onStreamChunk;
+        attempt;
+        signal;
         throw new Error('Provider.makeCompletionRequest not implemented');
     }
 
     static convertTools(tools: MagmaTool[]): object[] {
+        tools;
         throw new Error('Provider.convertTools not implemented');
     }
 
     static convertConfig(config: MagmaConfig): object {
+        config;
         throw new Error('Provider.convertConfig not implemented');
     }
 }

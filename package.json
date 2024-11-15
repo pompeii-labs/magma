@@ -45,13 +45,13 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./types": "./dist/src/types.js",
+    "./types": "./dist/src/types/index.js",
     "./decorators": "./dist/src/decorators.js"
   },
   "typesVersions": {
     "*": {
       "types": [
-        "./dist/src/types.d.ts"
+        "./dist/src/types/index.d.ts"
       ],
       "decorators": [
         "./dist/src/decorators.d.ts"

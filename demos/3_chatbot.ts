@@ -1,6 +1,6 @@
-import MagmaAgent from '../src';
+import MagmaAgent from '../src/index.js';
 import readline from 'readline';
-import { ANSI, Logger } from '../src/logger';
+import { ANSI, Logger } from '../src/logger.js';
 
 export async function cliChatbotDemo() {
     // Create your agent - this time we'll use Claude 3.5 sonnet

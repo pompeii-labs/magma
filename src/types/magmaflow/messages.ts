@@ -1,5 +1,5 @@
-import { MagmaFlowConfig } from './index';
-import { MagmaMessage, MagmaStreamChunk, MagmaUsage } from '../messages';
+import { MagmaFlowConfig } from './config.js';
+import { MagmaMessage, MagmaStreamChunk, MagmaUsage } from '../messages.js';
 
 type MagmaFlowMessageMessage = {
     type: 'message';

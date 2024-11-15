@@ -1,5 +1,5 @@
-import MagmaAgent from '../src';
-import { Logger } from '../src/logger';
+import MagmaAgent from '../src/index.js';
+import { Logger } from '../src/logger.js';
 
 export async function helloWorld() {
     // Create new MagmaAgent

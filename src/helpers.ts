@@ -1,4 +1,4 @@
-import { MagmaTool, MagmaToolParam } from './types';
+import { MagmaTool, MagmaToolParam } from './types/index.js';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema

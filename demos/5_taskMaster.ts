@@ -1,7 +1,7 @@
-import MagmaAgent from '../src';
-import { tool, toolparam } from '../src/decorators';
-import { ANSI, Logger } from '../src/logger';
-import { MagmaAssistantMessage, MagmaSystemMessage, MagmaMiddleware } from '../src/types';
+import MagmaAgent from '../src/index.js';
+import { tool, toolparam } from '../src/decorators.js';
+import { ANSI, Logger } from '../src/logger.js';
+import { MagmaAssistantMessage, MagmaSystemMessage, MagmaMiddleware } from '../src/types/index.js';
 import readline from 'readline';
 
 // Define mock task data structure

@@ -1,10 +1,9 @@
-import { OpenAIModel } from '../providers';
-import { AnthropicModel } from '../providers';
-import { MagmaSystemMessage } from '../messages';
-import { GroqModel } from '../providers';
-import { MagmaTool } from '../tools';
-import { STTConfig } from './stt';
-import { TTSConfig } from './tts';
+import { OpenAIModel, AnthropicModel } from '../providers.js';
+import { MagmaSystemMessage } from '../messages.js';
+import { GroqModel } from '../providers.js';
+import { MagmaTool } from '../tools.js';
+import { STTConfig } from './stt.js';
+import { TTSConfig } from './tts.js';
 
 export type MagmaFlowProviderConfig =
     | {

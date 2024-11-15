@@ -1,9 +1,9 @@
-import { Logger } from '../src/logger';
-import { helloWorld } from './1_hello';
-import { cliChatbotDemo } from './3_chatbot';
-import { middlewareDemo } from './4_middleware';
-import { toolDemo } from './2_tools';
-import { taskMasterDemo } from './5_taskMaster';
+import { Logger } from '../src/logger.js';
+import { helloWorld } from './1_hello.js';
+import { cliChatbotDemo } from './3_chatbot.js';
+import { middlewareDemo } from './4_middleware.js';
+import { toolDemo } from './2_tools.js';
+import { taskMasterDemo } from './5_taskMaster.js';
 
 const demos = ['hello', 'tools', 'chatbot', 'middleware', 'taskmaster'] as const;
 type Demo = (typeof demos)[number];

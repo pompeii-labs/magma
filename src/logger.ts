@@ -34,27 +34,27 @@ export class Logger implements MagmaLogger {
         this.name = name;
     }
 
-    debug(message: string, details?: object) {
-        this.log(LogLevel.DEBUG, message, details);
+    debug(message: string) {
+        this.log(LogLevel.DEBUG, message);
     }
 
-    info(message: string, details?: object) {
-        this.log(LogLevel.INFO, message, details);
+    info(message: string) {
+        this.log(LogLevel.INFO, message);
     }
 
-    warn(message: string, details?: object) {
-        this.log(LogLevel.WARN, message, details);
+    warn(message: string) {
+        this.log(LogLevel.WARN, message);
     }
 
-    error(message: string | Error, details?: object) {
+    error(message: string | Error) {
         if (message instanceof Error) {
-            this.log(LogLevel.ERROR, message.message, { ...details, stack: message.stack });
+            this.log(LogLevel.ERROR, message.message);
         } else {
-            this.log(LogLevel.ERROR, message, details);
+            this.log(LogLevel.ERROR, message);
         }
     }
 
-    private log(level: LogLevel, message: string, details?: object) {
+    private log(level: LogLevel, message: string) {
         const logString = `[${this.name}]${this.getColor(level)}[${level}]${this.getColor()} ${message}`;
 
         if (logString) console.log(logString);

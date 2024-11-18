@@ -5,6 +5,7 @@
   },
   "version": "1.0.26",
   "description": "The unopinionated framework to build better agents",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

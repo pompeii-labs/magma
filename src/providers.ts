@@ -2,8 +2,8 @@ import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
 } from 'openai/resources/index.mjs';
-import { mapNumberInRange, sleep } from './helpers';
-import { Logger } from './logger';
+import { mapNumberInRange, sleep } from './helpers.js';
+import { Logger } from './logger.js';
 import {
     MagmaTool,
     MagmaConfig,
@@ -13,14 +13,14 @@ import {
     MagmaToolParam,
     MagmaStreamChunk,
     MagmaUsage,
-} from './types';
+} from './types/index.js';
 import {
     MessageCreateParamsBase as AnthropicConfig,
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
     Message as AnthropicMessage,
 } from '@anthropic-ai/sdk/resources/messages.mjs';
-import { cleanParam } from './helpers';
+import { cleanParam } from './helpers.js';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';

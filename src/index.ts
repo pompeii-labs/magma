@@ -16,10 +16,10 @@ import {
     MagmaFlowConfig,
     TTSConfig,
     STTConfig,
-} from './types';
-import { Provider } from './providers';
-import { MagmaLogger } from './logger';
-import { hash, loadTools } from './helpers';
+} from './types/index.js';
+import { Provider } from './providers.js';
+import { MagmaLogger } from './logger.js';
+import { hash, loadTools } from './helpers.js';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';

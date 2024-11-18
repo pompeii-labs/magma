@@ -1,6 +1,6 @@
-import MagmaAgent from '../src';
+import MagmaAgent from '../src/index.js';
 import readline from 'readline';
-import { ANSI, Logger } from '../src/logger';
+import { ANSI, Logger } from '../src/logger.js';
 
 export async function middlewareDemo() {
     const agent = new MagmaAgent({

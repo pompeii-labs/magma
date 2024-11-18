@@ -1,6 +1,6 @@
-import MagmaAgent from '../src';
-import { Logger } from '../src/logger';
-import { MagmaToolTarget, MagmaAssistantMessage } from '../src/types';
+import MagmaAgent from '../src/index.js';
+import { Logger } from '../src/logger.js';
+import { MagmaToolTarget, MagmaAssistantMessage } from '../src/types/index.js';
 
 /**
  * MagmaToolTarget is the type of function a Magma agent expects to be able to call

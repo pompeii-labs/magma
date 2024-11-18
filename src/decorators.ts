@@ -1,4 +1,4 @@
-import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types';
+import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types/index.js';
 
 /**
  * Decorator to define a tool (optional)

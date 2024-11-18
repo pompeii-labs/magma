@@ -1,6 +1,6 @@
-import { MagmaProviderConfig } from './providers';
-import { MagmaMessage } from './messages';
-import { MagmaTool } from './tools';
+import { MagmaProviderConfig } from './providers.js';
+import { MagmaMessage } from './messages.js';
+import { MagmaTool } from './tools.js';
 
 export type MagmaConfig = {
     providerConfig: MagmaProviderConfig;

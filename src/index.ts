@@ -24,6 +24,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { WebSocket } from 'ws';
+import { MagmaHook } from './types/hooks.js';
 
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
@@ -696,6 +697,32 @@ export default class MagmaAgent {
         }
     }
 
+    public loadHooks(): MagmaHook[] {
+        try {
+            const prototype = Object.getPrototypeOf(this);
+            const propertyNames = Object.getOwnPropertyNames(prototype);
+
+            const hooks: MagmaHook[] = propertyNames
+                .map((fxn) => {
+                    const method = prototype[fxn];
+
+                    if (!(typeof method === 'function' && '_hookName' in method)) return null;
+
+                    return {
+                        name: method['_hookName'],
+                        handler: method.bind(this),
+                    } as MagmaHook;
+                })
+                .filter((h) => h);
+
+            return hooks;
+        } catch (error) {
+            this.logger?.debug(`Failed to load hooks - ${error.message ?? 'Unknown'}`);
+        }
+
+        return [];
+    }
+
     /**
      * Given a tool call, find the appropriate function to handle the run
      *
@@ -826,6 +853,10 @@ export default class MagmaAgent {
 
     private get middleware(): MagmaMiddleware[] {
         return [...this.defaultMiddleware, ...this.fetchMiddleware()];
+    }
+
+    private get hooks(): MagmaHook[] {
+        return this.loadHooks();
     }
 
     /* EVENT HANDLERS */

@@ -41,3 +41,14 @@ export function middleware(trigger: MagmaMiddlewareTriggerType) {
         descriptor.value._middlewareTrigger = trigger;
     };
 }
+
+/**
+ * Decorator for webhook functions
+ * @param hookName name of the hook
+ * ex: @hook('notification') -> POST /hooks/notification
+ */
+export function hook(hookName: string) {
+    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+        descriptor.value._hookName = hookName;
+    };
+}

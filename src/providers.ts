@@ -1,7 +1,7 @@
 import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
-} from 'openai/resources/index.mjs';
+} from 'openai/resources/index';
 import { mapNumberInRange, sleep } from './helpers.js';
 import { Logger } from './logger.js';
 import {
@@ -19,20 +19,17 @@ import {
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
     Message as AnthropicMessage,
-} from '@anthropic-ai/sdk/resources/messages.mjs';
+} from '@anthropic-ai/sdk/resources/messages';
 import { cleanParam } from './helpers.js';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import {
-    ChatCompletion,
-    ChatCompletionCreateParamsBase,
-} from 'openai/resources/chat/completions.mjs';
+import { ChatCompletion, ChatCompletionCreateParamsBase } from 'openai/resources/chat/completions';
 import {
     ChatCompletionTool as GroqTool,
     ChatCompletionMessageParam as GroqMessageParam,
     ChatCompletionCreateParamsBase as GroqConfig,
-} from 'groq-sdk/resources/chat/completions.mjs';
+} from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
 
 dotenv.config();

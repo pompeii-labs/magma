@@ -3,11 +3,28 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "The unopinionated framework to build better agents",
-  "type": "module",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "require": "./dist/src/types/index.js",
+      "import": "./dist/src/types/index.js",
+      "types": "./dist/src/types/index.d.ts"
+    },
+    "./decorators": {
+      "require": "./dist/src/decorators.js",
+      "import": "./dist/src/decorators.js",
+      "types": "./dist/src/decorators.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "demo": "npm run build && node dist/demos/index.js",
@@ -43,20 +60,6 @@
     "@anthropic-ai/sdk": "^0.27.3",
     "groq-sdk": "^0.7.0",
     "openai": "^4.69.0"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
-    },
-    "./types": {
-      "import": "./dist/src/types/index.js",
-      "require": "./dist/src/types/index.js"
-    },
-    "./decorators": {
-      "import": "./dist/src/decorators.js",
-      "require": "./dist/src/decorators.js"
-    }
   },
   "typesVersions": {
     "*": {

@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "The unopinionated framework to build better agents",
   "type": "module",
   "main": "dist/index.js",
@@ -45,9 +45,18 @@
     "openai": "^4.69.0"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./types": "./dist/src/types/index.js",
-    "./decorators": "./dist/src/decorators.js"
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./types": {
+      "import": "./dist/src/types/index.js",
+      "require": "./dist/src/types/index.js"
+    },
+    "./decorators": {
+      "import": "./dist/src/decorators.js",
+      "require": "./dist/src/decorators.js"
+    }
   },
   "typesVersions": {
     "*": {

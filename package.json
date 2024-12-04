@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.33",
+  "version": "1.0.34",
   "description": "The unopinionated framework to build better agents",
   "type": "commonjs",
   "main": "dist/index.js",

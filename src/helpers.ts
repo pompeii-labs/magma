@@ -115,7 +115,7 @@ export function loadHooks(target: any) {
 
     const hooks: MagmaHook[] = propertyNames
         .map((fxn) => {
-            const method = prototype[fxn];
+            const method = isInstance ? prototype[fxn] : target[fxn];
 
             if (!(typeof method === 'function' && '_hookName' in method)) return null;
 
@@ -144,7 +144,7 @@ export function loadJobs(target: any) {
 
     const jobs: MagmaJob[] = propertyNames
         .map((fxn) => {
-            const method = prototype[fxn];
+            const method = isInstance ? prototype[fxn] : target[fxn];
 
             if (!(typeof method === 'function' && '_schedule' in method)) return null;
 

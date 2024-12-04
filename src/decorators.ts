@@ -1,5 +1,5 @@
-import { isValidCronExpression } from 'cron-expression-validator';
 import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types/index.js';
+import { validate } from 'node-cron';
 
 /**
  * Decorator to define a tool (optional)
@@ -60,7 +60,7 @@ export function hook(hookName: string) {
  */
 export function job(cron: string, options?: { timezone?: string }) {
     // Validate cron expression
-    if (!isValidCronExpression(cron)) {
+    if (!validate(cron)) {
         throw new Error(`Invalid cron expression - ${cron}`);
     }
 

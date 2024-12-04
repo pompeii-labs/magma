@@ -26,7 +26,7 @@ import Groq from 'groq-sdk';
 import { WebSocket } from 'ws';
 import { MagmaHook } from './types/hooks.js';
 import { MagmaJob } from './types/jobs.js';
-
+import cron from 'node-cron';
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
 const kMagmaFlowEndpoint = 'api.magmaflow.dev';
@@ -724,7 +724,7 @@ export default class MagmaAgent {
         return [];
     }
 
-    public loadJobs(): MagmaJob[] {
+    private loadJobs(): MagmaJob[] {
         try {
             const prototype = Object.getPrototypeOf(this);
             const propertyNames = Object.getOwnPropertyNames(prototype);
@@ -749,6 +749,15 @@ export default class MagmaAgent {
         }
 
         return [];
+    }
+
+    public scheduleJobs({ verbose = false }: { verbose?: boolean } = {}): void {
+        const jobs = this.loadJobs();
+
+        for (const job of jobs) {
+            if (verbose) console.log(`Scheduling job with ${job.schedule}`);
+            cron.schedule(job.schedule, job.handler.bind(this), job.options);
+        }
     }
 
     /**

@@ -698,7 +698,7 @@ export default class MagmaAgent {
         }
     }
 
-    public loadHooks(): MagmaHook[] {
+    private loadHooks(): MagmaHook[] {
         try {
             const prototype = Object.getPrototypeOf(this);
             const propertyNames = Object.getOwnPropertyNames(prototype);

@@ -1,4 +1,5 @@
-import { MagmaTool, MagmaToolParam } from './types/index.js';
+import { MagmaHook, MagmaTool, MagmaToolParam } from './types/index.js';
+import { MagmaJob } from './types/jobs.js';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -97,6 +98,65 @@ export function loadTools(target: any) {
         .filter((f) => f);
 
     return tools ?? [];
+}
+
+export function loadHooks(target: any) {
+    const isClass = /^\s*class\s+/.test(target.toString());
+    const isInstance = typeof target === 'object' && !isClass ? true : false;
+    let propertyNames = [];
+    let prototype: object = undefined;
+
+    if (isInstance) {
+        prototype = Object.getPrototypeOf(target);
+        propertyNames = Object.getOwnPropertyNames(prototype);
+    } else {
+        propertyNames = Object.getOwnPropertyNames(target);
+    }
+
+    const hooks: MagmaHook[] = propertyNames
+        .map((fxn) => {
+            const method = prototype[fxn];
+
+            if (!(typeof method === 'function' && '_hookName' in method)) return null;
+
+            return {
+                name: method['_hookName'],
+                handler: method.bind(target),
+            } as MagmaHook;
+        })
+        .filter((h) => h);
+
+    return hooks ?? [];
+}
+
+export function loadJobs(target: any) {
+    const isClass = /^\s*class\s+/.test(target.toString());
+    const isInstance = typeof target === 'object' && !isClass ? true : false;
+    let propertyNames = [];
+    let prototype: object = undefined;
+
+    if (isInstance) {
+        prototype = Object.getPrototypeOf(target);
+        propertyNames = Object.getOwnPropertyNames(prototype);
+    } else {
+        propertyNames = Object.getOwnPropertyNames(target);
+    }
+
+    const jobs: MagmaJob[] = propertyNames
+        .map((fxn) => {
+            const method = prototype[fxn];
+
+            if (!(typeof method === 'function' && '_schedule' in method)) return null;
+
+            return {
+                handler: method.bind(target),
+                schedule: method['_schedule'],
+                options: method['_options'],
+            } as MagmaJob;
+        })
+        .filter((j) => j);
+
+    return jobs ?? [];
 }
 
 export function mapNumberInRange(

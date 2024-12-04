@@ -25,6 +25,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { WebSocket } from 'ws';
 import { MagmaHook } from './types/hooks.js';
+import { MagmaJob } from './types/jobs.js';
 
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
@@ -718,6 +719,33 @@ export default class MagmaAgent {
             return hooks;
         } catch (error) {
             this.logger?.debug(`Failed to load hooks - ${error.message ?? 'Unknown'}`);
+        }
+
+        return [];
+    }
+
+    public loadJobs(): MagmaJob[] {
+        try {
+            const prototype = Object.getPrototypeOf(this);
+            const propertyNames = Object.getOwnPropertyNames(prototype);
+
+            const jobs: MagmaJob[] = propertyNames
+                .map((fxn) => {
+                    const method = prototype[fxn];
+
+                    if (!(typeof method === 'function' && '_schedule' in method)) return null;
+
+                    return {
+                        handler: method.bind(this),
+                        schedule: method['_schedule'],
+                        options: method['_options'],
+                    } as MagmaJob;
+                })
+                .filter((j) => j);
+
+            return jobs;
+        } catch (error) {
+            this.logger?.debug(`Failed to load jobs - ${error.message ?? 'Unknown'}`);
         }
 
         return [];

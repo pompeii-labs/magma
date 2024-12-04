@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "The unopinionated framework to build better agents",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -52,6 +52,7 @@
     "typescript": "^5.6.2"
   },
   "dependencies": {
+    "cron-expression-validator": "^1.0.20",
     "dotenv": "^16.4.5",
     "readline": "^1.3.0",
     "ws": "^8.18.0"

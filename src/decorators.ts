@@ -1,3 +1,4 @@
+import { isValidCronExpression } from 'cron-expression-validator';
 import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types/index.js';
 
 /**
@@ -50,5 +51,21 @@ export function middleware(trigger: MagmaMiddlewareTriggerType) {
 export function hook(hookName: string) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._hookName = hookName;
+    };
+}
+
+/**
+ * Decorator for scheduled jobs
+ * @param cron cron expression
+ */
+export function job(cron: string, options?: { timezone?: string }) {
+    // Validate cron expression
+    if (!isValidCronExpression(cron)) {
+        throw new Error(`Invalid cron expression - ${cron}`);
+    }
+
+    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+        descriptor.value._schedule = cron;
+        descriptor.value._options = options;
     };
 }

@@ -1,4 +1,4 @@
-import { MagmaState } from './index.js';
+import { MagmaState } from './index';
 
 export const MagmaMiddlewareTriggers = [
     'onCompletion',

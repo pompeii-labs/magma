@@ -227,7 +227,6 @@ class MyAgent extends MagmaAgent {
 
 ## 📚 Want More?
 
-- Check out our [examples](https://github.com/pompeii-labs/magma/tree/main/demos)
 - Join our [Slack Community](https://join.slack.com/t/magmacommunity/shared_invite/zt-2tghhq3av-Xn9k9ntwN5ZwqvxbWcfsTg)
 - Star us on [GitHub](https://github.com/pompeii-labs/magma)
 

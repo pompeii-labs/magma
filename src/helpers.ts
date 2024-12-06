@@ -1,5 +1,4 @@
-import { MagmaHook, MagmaTool, MagmaToolParam } from './types/index.js';
-import { MagmaJob } from './types/jobs.js';
+import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob } from './types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -16,7 +15,7 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
         case 'array':
             if (!param.items)
                 throw new Error(
-                    `Array parameters must have items defined - ${JSON.stringify(param)}`,
+                    `Array parameters must have items defined - ${JSON.stringify(param)}`
                 );
             return {
                 type: 'array',
@@ -26,7 +25,7 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
         case 'object':
             if (!param.properties)
                 throw new Error(
-                    `Object parameters must have properties defined - ${JSON.stringify(param)}`,
+                    `Object parameters must have properties defined - ${JSON.stringify(param)}`
                 );
 
             return {
@@ -36,11 +35,11 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
                     param.properties.map((property) => {
                         if (!property.key)
                             throw new Error(
-                                `Object properties must have keys defined - ${JSON.stringify(property)}`,
+                                `Object properties must have keys defined - ${JSON.stringify(property)}`
                             );
 
                         return [property.key, cleanParam(property, objectRequiredParams)];
-                    }),
+                    })
                 ),
                 required: objectRequiredParams,
             };
@@ -164,7 +163,7 @@ export function mapNumberInRange(
     min: number,
     max: number,
     newMin: number,
-    newMax: number,
+    newMax: number
 ): number {
     return ((n - min) * (newMax - newMin)) / (max - min) + newMin;
 }

@@ -1,4 +1,4 @@
-import { MagmaProvider } from './providers.js';
+import { MagmaProvider } from './providers';
 
 export type MagmaCompletion = {
     message: MagmaMessage;

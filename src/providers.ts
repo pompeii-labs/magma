@@ -2,8 +2,8 @@ import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
 } from 'openai/resources/index';
-import { mapNumberInRange, sleep } from './helpers.js';
-import { Logger } from './logger.js';
+import { mapNumberInRange, sleep } from './helpers';
+import { Logger } from './logger';
 import {
     MagmaTool,
     MagmaConfig,
@@ -13,14 +13,14 @@ import {
     MagmaToolParam,
     MagmaStreamChunk,
     MagmaUsage,
-} from './types/index.js';
+} from './types';
 import {
     MessageCreateParamsBase as AnthropicConfig,
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
     Message as AnthropicMessage,
 } from '@anthropic-ai/sdk/resources/messages';
-import { cleanParam } from './helpers.js';
+import { cleanParam } from './helpers';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
@@ -69,7 +69,7 @@ export abstract class Provider implements ProviderProps {
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
-        signal?: AbortSignal,
+        signal?: AbortSignal
     ): Promise<MagmaCompletion> {
         config;
         onStreamChunk;
@@ -204,7 +204,7 @@ export class AnthropicProvider extends Provider {
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
-        signal?: AbortSignal,
+        signal?: AbortSignal
     ): Promise<MagmaCompletion> {
         try {
             const anthropic = config.providerConfig.client as Anthropic;
@@ -218,7 +218,7 @@ export class AnthropicProvider extends Provider {
                         ...anthropicConfig,
                         stream: true,
                     },
-                    { signal },
+                    { signal }
                 );
 
                 let buffer = '';
@@ -385,7 +385,7 @@ export class OpenAIProvider extends Provider {
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
-        signal?: AbortSignal,
+        signal?: AbortSignal
     ): Promise<MagmaCompletion> {
         try {
             const openai = config.providerConfig.client as OpenAI;
@@ -400,7 +400,7 @@ export class OpenAIProvider extends Provider {
                         stream: true,
                         stream_options: { include_usage: true },
                     },
-                    { signal },
+                    { signal }
                 );
 
                 let buffer = '';
@@ -698,7 +698,7 @@ export class GroqProvider extends Provider {
         config: MagmaConfig,
         onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
         attempt: number = 0,
-        signal?: AbortSignal,
+        signal?: AbortSignal
     ): Promise<MagmaCompletion> {
         try {
             const groq = config.providerConfig.client as Groq;
@@ -712,7 +712,7 @@ export class GroqProvider extends Provider {
                         ...groqConfig,
                         stream: true,
                     },
-                    { signal },
+                    { signal }
                 );
 
                 let buffer = '';

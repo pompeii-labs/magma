@@ -1,15 +1,23 @@
 {
+	"include": ["src"],
+	"exclude": ["node_modules/**/*.ts"],
 	"compilerOptions": {
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"target": "ES6",
+		"declaration": true,
+		"declarationMap": true,
+		"module": "CommonJS",
+		"outDir": "dist/main",
+		"sourceMap": true,
+		"target": "ES2015",
+
+		"strict": false,
+
 		"esModuleInterop": true,
-		"skipLibCheck": true,
+		"moduleResolution": "Node",
+
+		"forceConsistentCasingInFileNames": true,
+		"allowSyntheticDefaultImports": true,
+
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true,
-		"outDir": "dist",
-		"declaration": true
 	},
-	"include": ["index.ts", "src/**/*.ts", "demos/*.ts"],
-	"exclude": ["node_modules"]
 }

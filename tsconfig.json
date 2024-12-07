@@ -5,14 +5,14 @@
 		"declaration": true,
 		"declarationMap": true,
 		"module": "CommonJS",
-		"outDir": "dist/main",
+		"outDir": "dist/",
 		"sourceMap": true,
 		"target": "ES2015",
 
 		"strict": false,
 
 		"esModuleInterop": true,
-		"moduleResolution": "Node",
+		"moduleResolution": "node",
 
 		"forceConsistentCasingInFileNames": true,
 		"allowSyntheticDefaultImports": true,

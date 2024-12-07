@@ -9,36 +9,34 @@
     "Agentic",
     "LLM"
   ],
+  "license": "Apache-2.0",
+  "author": "Pompeii Labs, Inc.",
+  "files": [
+    "dist"
+  ],
   "repository": "pompeii-labs/magma",
-  "main": "dist/main/index.js",
-  "module": "dist/module/index.js",
-  "types": "dist/module/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/module/index.js",
-      "require": "./dist/main/index.js",
-      "types": "./dist/module/index.d.ts"
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./decorators": {
-      "import": "./dist/module/decorators.js",
-      "require": "./dist/main/decorators.js",
-      "types": "./dist/module/decorators.d.ts"
+      "default": "./dist/decorators.js",
+      "types": "./dist/decorators.d.ts"
     },
     "./types": {
-      "import": "./dist/module/types/index.js",
-      "require": "./dist/main/types/index.js",
-      "types": "./dist/module/types/index.d.ts"
+      "default": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
     }
   },
   "scripts": {
     "clean": "rimraf dist",
-    "format": "prettier --write \"{src,demos}/**/*.ts\"",
-    "build": "run-s clean format build:*",
-    "build:main": "tsc -p tsconfig.json",
-    "build:module": "tsc -p tsconfig.module.json"
+    "format": "prettier --write \"src/**/*.ts\"",
+    "compile": "tsc -p tsconfig.json",
+    "build": "run-s clean format compile"
   },
-  "author": "Pompeii Labs, Inc.",
-  "license": "Apache-2.0",
   "devDependencies": {
     "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.5.12",

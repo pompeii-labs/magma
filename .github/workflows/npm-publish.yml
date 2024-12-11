@@ -23,3 +23,42 @@ jobs:
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
+
+
+      - name: Successful Deployment Notification
+        if: success() && !contains(github.event.head_commit.message, '[no-notify]')
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚀 Successful Deployment of Magma Framework",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Changes:*\n${{ github.event.head_commit.message }}"
+                  }
+                ]
+              }
+              ]
+            }' ${{ secrets.SLACK_WEBHOOK_URL }}

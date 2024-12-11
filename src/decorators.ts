@@ -1,4 +1,4 @@
-import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types/index.js';
+import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types';
 import { validate } from 'node-cron';
 
 /**

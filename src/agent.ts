@@ -243,13 +243,15 @@ export class MagmaAgent {
 
             const result = await tool.target(call, this.state);
 
-            await this.runMiddleware('onToolExecution', result);
-
-            this.messages.push({
+            const toolResult: MagmaMessage = {
                 role: 'tool_result',
                 tool_result_id: call.tool_call_id,
                 tool_result: result,
-            });
+            };
+
+            await this.runMiddleware('onToolExecution', toolResult);
+
+            this.messages.push(toolResult);
         } catch (error) {
             const errorMessage = `Tool Execution Failed for ${call.fn_name} - ${error.message ?? 'Unknown'}`;
             this.logger?.warn(errorMessage);
@@ -781,16 +783,18 @@ export class MagmaAgent {
                 this.retryCount++;
             }
 
-            this.messages.push({
-                role: 'tool_result',
-                tool_result_id: call.tool_call_id,
-                tool_result: result,
-            });
-
             // If we're connected to Magma Flow, we can return the result directly which will be passed back to the server
             if (this.connected) {
                 return result;
             }
+
+            toolResult = {
+                role: 'tool_result',
+                tool_result_id: call.tool_call_id,
+                tool_result: result,
+            };
+
+            this.messages.push(toolResult);
 
             this.retryCount = 0;
         } catch (error) {

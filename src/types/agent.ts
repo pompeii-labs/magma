@@ -9,6 +9,7 @@ export type MagmaConfig = {
     tool_choice?: 'auto' | 'required' | string;
     temperature?: number;
     stream?: boolean;
+    max_tokens?: number;
 };
 
 export type MagmaState = Map<string, any>;

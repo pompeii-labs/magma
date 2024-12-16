@@ -110,9 +110,9 @@ export class AnthropicProvider extends Provider {
             ...config,
             model,
             messages: this.convertMessages(config.messages),
-            max_tokens: 2048,
-            tools: tools,
-            tool_choice: tool_choice,
+            max_tokens: config.max_tokens ?? (model.includes('claude-3-5') ? 8192 : 4096),
+            tools,
+            tool_choice,
             system: config.messages
                 .filter((m) => m.role === 'system')
                 .map((m) => m.content)
@@ -592,7 +592,8 @@ export class OpenAIProvider extends Provider {
             ...config,
             model,
             messages: this.convertMessages(config.messages),
-            tools: tools,
+            tools,
+            max_tokens: config.max_tokens ?? undefined,
             temperature: config.temperature
                 ? mapNumberInRange(config.temperature, 0, 1, 0, 2)
                 : undefined,
@@ -685,6 +686,7 @@ export class GroqProvider extends Provider {
             model,
             messages: this.convertMessages(config.messages),
             tools,
+            max_tokens: config.max_tokens ?? undefined,
             tool_choice,
             temperature: config.temperature
                 ? mapNumberInRange(config.temperature, 0, 1, 0, 2)

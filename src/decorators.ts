@@ -1,4 +1,4 @@
-import { MagmaToolParam, MagmaMiddlewareTriggerType } from './types';
+import { MagmaToolParam, MagmaMiddlewareTriggerType, MagmaMiddlewareTriggers } from './types';
 import { validate } from 'node-cron';
 
 /**
@@ -38,6 +38,14 @@ export function toolparam(args: MagmaToolParam) {
  * @param trigger which middleware event should trigger the decorated function
  */
 export function middleware(trigger: MagmaMiddlewareTriggerType) {
+    if (!trigger) {
+        throw new Error('Middleware trigger is required');
+    }
+
+    if (!MagmaMiddlewareTriggers.includes(trigger)) {
+        throw new Error(`Invalid middleware trigger - ${trigger}`);
+    }
+
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._middlewareTrigger = trigger;
     };

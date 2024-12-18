@@ -283,7 +283,7 @@ export class MagmaAgent {
      *
      * @throws Will rethrow the error if no `onError` handler is defined
      */
-    public async main(): Promise<MagmaAssistantMessage> {
+    public async main(config?: MagmaConfig): Promise<MagmaAssistantMessage> {
         try {
             // Call 'preCompletion' middleware
             if (this.messages.some((s) => s.role === 'user')) {
@@ -357,6 +357,7 @@ export class MagmaAgent {
                 const tools = this.tools;
 
                 const completionConfig: MagmaConfig = {
+                    ...config,
                     providerConfig: this.providerConfig,
                     messages: [
                         ...this.fetchSystemPrompts(),
@@ -781,6 +782,12 @@ export class MagmaAgent {
                 if (this.retryCount >= 3) throw new Error('Tool execution not handled');
 
                 this.retryCount++;
+            }
+
+            if (typeof result !== 'string') {
+                throw new Error(
+                    `Tool ${call.fn_name}() did not return a string, instead returned ${typeof result}`
+                );
             }
 
             // If we're connected to Magma Flow, we can return the result directly which will be passed back to the server

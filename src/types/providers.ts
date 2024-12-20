@@ -10,7 +10,7 @@ export type MagmaClient = OpenAI | Anthropic;
 
 export type AnthropicModel = Anthropic.Messages.Model;
 
-export type OpenAIModel = ChatModel;
+export type OpenAIModel = ChatModel | (string & {});
 
 export type GroqModel = string & {};
 

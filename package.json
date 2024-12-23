@@ -36,7 +36,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "compile": "tsc -p tsconfig.json",
     "build": "run-s clean format compile",
-    "test": "vitest"
+    "test": "vitest --silent false"
   },
   "devDependencies": {
     "@types/node-cron": "^3.0.11",

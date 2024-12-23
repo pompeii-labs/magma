@@ -16,6 +16,7 @@ import {
     MagmaFlowConfig,
     TTSConfig,
     STTConfig,
+    MagmaMultiToolCall,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
@@ -390,6 +391,8 @@ export class MagmaAgent {
                 await this.runMiddleware('preToolExecution', message);
 
                 return (await this.executeTool(message)) as MagmaAssistantMessage;
+            } else if (message.role === 'multi_tool_call') {
+                return (await this.executeMultiTool(message)) as MagmaAssistantMessage;
             } else {
                 const retry = await this.runMiddleware('onCompletion', message);
                 if (retry) {
@@ -484,7 +487,7 @@ export class MagmaAgent {
      */
     public removeMessage(filter?: (message: MagmaMessage) => boolean): void {
         if (filter) {
-            this.messages = this.messages.filter(filter);
+            this.messages = this.messages.filter((message) => !filter(message));
         } else {
             this.messages.pop();
         }
@@ -769,7 +772,10 @@ export class MagmaAgent {
      * @param call MagmaToolCall tool call to run
      * @returns completion to continue the conversation
      */
-    private async executeTool(call: MagmaToolCall): Promise<MagmaMessage | string> {
+    private async executeTool(
+        call: MagmaToolCall,
+        multiTool: boolean = false
+    ): Promise<MagmaMessage | string> {
         let toolResult: MagmaMessage;
         try {
             const tool = this.tools.find((t) => t.name === call.fn_name);
@@ -801,7 +807,9 @@ export class MagmaAgent {
                 tool_result: result,
             };
 
-            this.messages.push(toolResult);
+            if (!multiTool) {
+                this.messages.push(toolResult);
+            }
 
             this.retryCount = 0;
         } catch (error) {
@@ -823,6 +831,27 @@ export class MagmaAgent {
         if (toolResult) {
             await this.runMiddleware('onToolExecution', toolResult);
         }
+
+        if (multiTool) {
+            return toolResult;
+        }
+
+        return await this.main();
+    }
+
+    private async executeMultiTool(call: MagmaMultiToolCall): Promise<MagmaMessage> {
+        let multiToolResult: MagmaMessage;
+
+        const toolResults = await Promise.all(
+            call.tool_calls.map((toolCall) => this.executeTool(toolCall, true))
+        );
+
+        multiToolResult = {
+            role: 'multi_tool_result',
+            tool_results: toolResults as MagmaToolResult[],
+        };
+
+        this.messages.push(multiToolResult);
 
         return await this.main();
     }

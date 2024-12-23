@@ -13,6 +13,7 @@ import {
     MagmaToolParam,
     MagmaStreamChunk,
     MagmaUsage,
+    MagmaToolCall,
 } from './types';
 import {
     MessageCreateParamsBase as AnthropicConfig,
@@ -29,6 +30,7 @@ import {
     ChatCompletionTool as GroqTool,
     ChatCompletionMessageParam as GroqMessageParam,
     ChatCompletionCreateParamsBase as GroqConfig,
+    ChatCompletionToolMessageParam,
 } from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
 
@@ -506,15 +508,33 @@ export class OpenAIProvider extends Provider {
                 let magmaMessage: MagmaMessage;
 
                 if (openAIMessage.tool_calls) {
-                    const tool_call = openAIMessage.tool_calls[0];
-                    magmaMessage = {
-                        role: 'tool_call',
-                        tool_call_id: tool_call.id,
-                        fn_name: tool_call.function.name,
-                        fn_args: JSON.parse(tool_call.function.arguments),
-                    };
-                } else {
+                    const openaiToolCalls = openAIMessage.tool_calls;
+
+                    if (openaiToolCalls.length === 1) {
+                        const tool_call = openaiToolCalls[0];
+
+                        magmaMessage = {
+                            role: 'tool_call',
+                            tool_call_id: tool_call.id,
+                            fn_name: tool_call.function.name,
+                            fn_args: JSON.parse(tool_call.function.arguments),
+                        };
+                    } else {
+                        magmaMessage = {
+                            role: 'multi_tool_call',
+                            tool_calls: openaiToolCalls.map((tool_call) => ({
+                                role: 'tool_call',
+                                tool_call_id: tool_call.id,
+                                fn_name: tool_call.function.name,
+                                fn_args: JSON.parse(tool_call.function.arguments),
+                            })),
+                        };
+                    }
+                } else if (openAIMessage.content) {
                     magmaMessage = { role: 'assistant', content: openAIMessage.content };
+                } else {
+                    console.log(JSON.stringify(openAICompletion.choices[0], null, 2));
+                    throw new Error('OpenAI completion was null');
                 }
 
                 const magmaCompletion: MagmaCompletion = {
@@ -617,21 +637,18 @@ export class OpenAIProvider extends Provider {
                         content: message.content,
                     });
                     break;
-
                 case 'assistant':
                     openAIMessages.push({
                         role: 'assistant',
                         content: message.content,
                     });
                     break;
-
                 case 'user':
                     openAIMessages.push({
                         role: 'user',
                         content: message.content,
                     });
                     break;
-
                 case 'tool_call':
                     openAIMessages.push({
                         role: 'assistant',
@@ -647,7 +664,19 @@ export class OpenAIProvider extends Provider {
                         ],
                     });
                     break;
-
+                case 'multi_tool_call':
+                    openAIMessages.push({
+                        role: 'assistant',
+                        tool_calls: message.tool_calls.map((tool_call) => ({
+                            type: 'function',
+                            id: tool_call.tool_call_id,
+                            function: {
+                                name: tool_call.fn_name,
+                                arguments: JSON.stringify(tool_call.fn_args),
+                            },
+                        })),
+                    });
+                    break;
                 case 'tool_result':
                     openAIMessages.push({
                         role: 'tool',
@@ -656,6 +685,17 @@ export class OpenAIProvider extends Provider {
                             ? `Something went wrong calling your last tool - \n ${message.tool_result}`
                             : message.tool_result,
                     });
+                    break;
+                case 'multi_tool_result':
+                    for (const toolResult of message.tool_results) {
+                        openAIMessages.push({
+                            role: 'tool',
+                            tool_call_id: toolResult.tool_result_id,
+                            content: toolResult.tool_result_error
+                                ? `Something went wrong calling ${toolResult.tool_result_id} - \n ${toolResult.tool_result}`
+                                : toolResult.tool_result,
+                        });
+                    }
                     break;
             }
         }

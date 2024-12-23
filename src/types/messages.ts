@@ -18,7 +18,9 @@ export type MagmaMessage =
     | MagmaAssistantMessage
     | MagmaUserMessage
     | MagmaToolCall
-    | MagmaToolResult;
+    | MagmaMultiToolCall
+    | MagmaToolResult
+    | MagmaMultiToolResult;
 
 export type MagmaSystemMessage = {
     id?: string | number;
@@ -46,11 +48,21 @@ export type MagmaToolCall = {
     fn_args: Record<string, any>;
 };
 
+export type MagmaMultiToolCall = {
+    role: 'multi_tool_call';
+    tool_calls: MagmaToolCall[];
+};
+
 export type MagmaToolResult = {
     role: 'tool_result';
     tool_result_id: string;
     tool_result: string;
     tool_result_error?: boolean;
+};
+
+export type MagmaMultiToolResult = {
+    role: 'multi_tool_result';
+    tool_results: MagmaToolResult[];
 };
 
 export type MagmaStreamChunk = {

@@ -484,7 +484,7 @@ export class MagmaAgent {
      */
     public removeMessage(filter?: (message: MagmaMessage) => boolean): void {
         if (filter) {
-            this.messages = this.messages.filter(filter);
+            this.messages = this.messages.filter((message) => !filter(message));
         } else {
             this.messages.pop();
         }

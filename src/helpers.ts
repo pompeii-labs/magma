@@ -7,7 +7,7 @@ import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob } from './types';
  * @returns { Record<string, any> } JSON object schema
  */
 export const cleanParam = (
-    param: MagmaToolParam & { key?: string },
+    param: MagmaToolParam & { key?: string; required?: boolean },
     requiredList?: string[]
 ): Record<string, any> => {
     param.required && param.key && requiredList?.push(param.key);

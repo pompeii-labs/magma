@@ -33,7 +33,7 @@ const kMagmaFlowMainTimeout = 15000;
 const kMagmaFlowEndpoint = 'api.magmaflow.dev';
 
 /**
- * provider: 'openai' | 'anthropic' (optional)(default openai)
+ * provider: 'openai' | 'anthropic' | 'groq' (optional)(default openai)
  * model: any supported model of the associated provider (optional)(default gpt-4o)
  * fetchSystemPrompts: method to retrieve system prompts whenever a completion is generated
  * fetchTools: fetch user-defined tools to make available in context (optional)
@@ -138,10 +138,13 @@ export class MagmaAgent {
         return this.providerConfig.provider;
     }
 
-    public async setup(opts?: object): Promise<MagmaAssistantMessage | void> {
-        opts;
-        throw new Error(`Agent.setup function not implemented`);
-    }
+    public async setup?(opts?: object): Promise<MagmaAssistantMessage | void> {}
+
+    /**
+     * Optional method to receive input from the user
+     * @param message message object received from the user - type to be defined by extending class
+     */
+    public async receive?(message: any): Promise<void> {}
 
     public async cleanup(): Promise<void> {
         try {
@@ -166,15 +169,6 @@ export class MagmaAgent {
         this.messages = [];
 
         this.logger?.debug('Agent cleanup complete');
-    }
-
-    /**
-     * Method to receive input from the user
-     * @param message message object received from the user - type to be defined by extending class
-     */
-    public async receive(message: any): Promise<void> {
-        this.logger?.debug(JSON.stringify(message));
-        throw new Error('Agent.receive function not implemented');
     }
 
     /**

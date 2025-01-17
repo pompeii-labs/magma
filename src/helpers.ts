@@ -6,8 +6,11 @@ import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob } from './types';
  * @param requiredList keys of required parameters
  * @returns { Record<string, any> } JSON object schema
  */
-export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Record<string, any> => {
-    param.required && requiredList?.push(param.key);
+export const cleanParam = (
+    param: MagmaToolParam & { key?: string; required?: boolean },
+    requiredList?: string[]
+): Record<string, any> => {
+    param.required && param.key && requiredList?.push(param.key);
 
     const objectRequiredParams = [];
 
@@ -43,11 +46,23 @@ export const cleanParam = (param: MagmaToolParam, requiredList?: string[]): Reco
                 ),
                 required: objectRequiredParams,
             };
-        default:
+        case 'string':
             return {
-                type: param.type,
+                type: 'string',
                 description: param.description,
                 enum: param.enum,
+            };
+
+        case 'number':
+            return {
+                type: 'number',
+                description: param.description,
+                enum: param.enum,
+            };
+        case 'boolean':
+            return {
+                type: 'boolean',
+                description: param.description,
             };
     }
 };

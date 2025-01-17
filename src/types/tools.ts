@@ -3,22 +3,42 @@ import { MagmaToolCall } from './messages';
 
 export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
 
-export type MagmaToolParam = {
-    key?: string;
-    type: MagmaToolParamType;
+export type MagmaToolObjectParam = {
+    type: 'object';
     description?: string;
-    items?: MagmaToolParam;
-    required?: boolean;
-    enum?: string[] | number[];
-    limit?: number;
-    properties?: MagmaToolParam[];
+    properties: (MagmaToolParam & { key: string; required?: boolean })[];
 };
 
-export type MagmaToolSchema = {
-    name: string;
+export type MagmaToolArrayParam = {
+    type: 'array';
     description?: string;
-    properties: Record<string, MagmaToolParam>;
+    items: MagmaToolParam;
+    limit?: number;
 };
+
+export type MagmaToolStringParam = {
+    type: 'string';
+    description?: string;
+    enum?: string[];
+};
+
+export type MagmaToolNumberParam = {
+    type: 'number';
+    description?: string;
+    enum?: number[];
+};
+
+export type MagmaToolBooleanParam = {
+    type: 'boolean';
+    description?: string;
+};
+
+export type MagmaToolParam =
+    | MagmaToolObjectParam
+    | MagmaToolArrayParam
+    | MagmaToolStringParam
+    | MagmaToolNumberParam
+    | MagmaToolBooleanParam;
 
 // Target in-code function that a MagmaTool maps to
 export type MagmaToolTarget = (call: MagmaToolCall, state?: MagmaState) => Promise<string>;
@@ -26,6 +46,6 @@ export type MagmaToolTarget = (call: MagmaToolCall, state?: MagmaState) => Promi
 export type MagmaTool = {
     name: string;
     description: string;
-    params: MagmaToolParam[];
+    params: (MagmaToolParam & { key: string; required?: boolean })[];
     target: MagmaToolTarget;
 };

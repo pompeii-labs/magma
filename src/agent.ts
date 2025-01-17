@@ -491,6 +491,17 @@ export class MagmaAgent {
      * @param role message role (default: user)
      */
     public addMessage(message: MagmaMessage): void {
+        if ('images' in message) {
+            // Validate images are base64 data, not URLs
+            for (const image of message.images ?? []) {
+                if (this.providerName === 'anthropic' && typeof image === 'string') {
+                    if (image.startsWith('http')) {
+                        throw new Error('Image URLs are not supported by Anthropic');
+                    }
+                }
+            }
+        }
+
         this.messages.push(message);
     }
 

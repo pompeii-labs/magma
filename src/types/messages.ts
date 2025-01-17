@@ -12,6 +12,13 @@ export type MagmaUsage = {
     output_tokens: number;
 };
 
+export type MagmaImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+export type MagmaImage = {
+    data: string;
+    type: MagmaImageType;
+};
+
 // Provider-agnostic message type
 export type MagmaMessage =
     | MagmaSystemMessage
@@ -32,6 +39,7 @@ export type MagmaUserMessage = {
     id?: string | number;
     role: 'user';
     content: string;
+    images?: string[] | MagmaImage[];
 };
 
 export type MagmaAssistantMessage = {

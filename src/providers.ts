@@ -20,6 +20,7 @@ import {
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
     Message as AnthropicMessage,
+    ImageBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
 import { cleanParam } from './helpers';
 import dotenv from 'dotenv';
@@ -151,9 +152,41 @@ export class AnthropicProvider extends Provider {
                     break;
 
                 case 'user':
+                    let imageContentParts: ImageBlockParam[] = [];
+                    if (message.images) {
+                        const images = Array.isArray(message.images)
+                            ? message.images
+                            : [message.images];
+                        imageContentParts = [];
+
+                        for (const image of images) {
+                            if (typeof image === 'string') {
+                                throw new Error('Image URLs are not supported by Anthropic');
+                            } else if (image.type && image.data) {
+                                imageContentParts.push({
+                                    type: 'image',
+                                    source: {
+                                        data: image.data,
+                                        media_type: image.type,
+                                        type: 'base64',
+                                    },
+                                });
+                            }
+                        }
+                    }
+
                     anthropicMessages.push({
                         role: 'user',
-                        content: message.content,
+                        content:
+                            imageContentParts.length > 0
+                                ? [
+                                      {
+                                          type: 'text',
+                                          text: message.content,
+                                      },
+                                      ...imageContentParts,
+                                  ]
+                                : message.content,
                     });
                     break;
 
@@ -192,12 +225,6 @@ export class AnthropicProvider extends Provider {
                 role: 'user',
                 content: 'begin',
             });
-
-        // if (anthropicMessages.at(-1).role != 'user')
-        //     anthropicMessages.push({
-        //         role: 'user',
-        //         content: 'Continue in the natural flow of the conversation with the user',
-        //     });
 
         return anthropicMessages;
     }
@@ -644,9 +671,36 @@ export class OpenAIProvider extends Provider {
                     });
                     break;
                 case 'user':
+                    let content: string | Array<any> = message.content;
+                    if (message.images) {
+                        const images = Array.isArray(message.images)
+                            ? message.images
+                            : [message.images];
+                        content = [{ type: 'text', text: message.content }];
+
+                        for (const image of images) {
+                            // If image is a string, it is a url
+                            if (typeof image === 'string') {
+                                content.push({
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: image,
+                                    },
+                                });
+                            } else {
+                                content.push({
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:${image.type};base64,${image.data}`,
+                                    },
+                                });
+                            }
+                        }
+                    }
+
                     openAIMessages.push({
                         role: 'user',
-                        content: message.content,
+                        content,
                     });
                     break;
                 case 'tool_call':
@@ -937,21 +991,44 @@ export class GroqProvider extends Provider {
                         content: message.content,
                     });
                     break;
-
                 case 'assistant':
                     groqMessages.push({
                         role: 'assistant',
                         content: message.content,
                     });
                     break;
-
                 case 'user':
+                    let content: string | Array<any> = message.content;
+                    if (message.images) {
+                        const images = Array.isArray(message.images)
+                            ? message.images
+                            : [message.images];
+                        content = [{ type: 'text', text: message.content }];
+
+                        for (const image of images) {
+                            if (typeof image === 'string') {
+                                content.push({
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: image,
+                                    },
+                                });
+                            } else {
+                                content.push({
+                                    type: 'image',
+                                    image: {
+                                        data: image.data,
+                                        media_type: image.type,
+                                    },
+                                });
+                            }
+                        }
+                    }
                     groqMessages.push({
                         role: 'user',
-                        content: message.content,
+                        content,
                     });
                     break;
-
                 case 'tool_call':
                     groqMessages.push({
                         role: 'assistant',
@@ -967,7 +1044,6 @@ export class GroqProvider extends Provider {
                         ],
                     });
                     break;
-
                 case 'tool_result':
                     groqMessages.push({
                         role: 'tool',

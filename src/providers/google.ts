@@ -60,7 +60,6 @@ export class GoogleProvider extends Provider {
                 }[] = [];
 
                 for await (const chunk of stream) {
-                    console.log(JSON.stringify(chunk, null, 2));
                     // First stream chunk telling us what tools are being called
                     if (chunk.functionCalls()?.length > 0) {
                         for (const toolCall of chunk.functionCalls()) {
@@ -240,8 +239,6 @@ export class GoogleProvider extends Provider {
                 temperature: config.temperature,
             },
         };
-
-        console.log(JSON.stringify(googleConfig, null, 2));
 
         return googleConfig;
     }

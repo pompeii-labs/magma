@@ -21,7 +21,7 @@ export function tool(args: { name?: string; description?: string }) {
  * @param description optional description of the parameter
  * @param required whether the parameter is required or not
  */
-export function toolparam(args: MagmaToolParam & { key: string }) {
+export function toolparam(args: MagmaToolParam & { key: string; required?: boolean }) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         // Ensure metadata exists on this method's prototype
         if (!descriptor.value._methodName) {

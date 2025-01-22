@@ -66,6 +66,7 @@ export type MagmaToolResult = {
     tool_result_id: string;
     tool_result: string;
     tool_result_error?: boolean;
+    fn_name: string;
 };
 
 export type MagmaMultiToolResult = {

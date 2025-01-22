@@ -41,7 +41,7 @@ export type MagmaToolParam =
     | MagmaToolBooleanParam;
 
 // Target in-code function that a MagmaTool maps to
-export type MagmaToolTarget = (call: MagmaToolCall, state?: MagmaState) => Promise<string>;
+export type MagmaToolTarget = (call: MagmaToolCall, state?: MagmaState) => Promise<string> | string;
 // Tool type containing the json schema sent to the LLM and the target to be called with the generated args
 export type MagmaTool = {
     name: string;

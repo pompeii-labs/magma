@@ -28,6 +28,7 @@ import { WebSocket } from 'ws';
 import { MagmaHook } from './types/hooks';
 import { MagmaJob } from './types/jobs';
 import cron from 'node-cron';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
 const kMagmaFlowMainTimeout = 15000;
 const kMagmaFlowEndpoint = 'api.magmaflow.dev';
@@ -246,6 +247,7 @@ export class MagmaAgent {
                     tool_result_id: call.tool_call_id,
                     tool_result: middlewareError,
                     tool_result_error: true,
+                    fn_name: call.fn_name,
                 });
 
                 return await this.main();
@@ -257,6 +259,7 @@ export class MagmaAgent {
                 role: 'tool_result',
                 tool_result_id: call.tool_call_id,
                 tool_result: result,
+                fn_name: call.fn_name,
             };
 
             const onToolExecutionError = await this.runMiddleware('onToolExecution', toolResult);
@@ -274,6 +277,7 @@ export class MagmaAgent {
                 tool_result_id: call.tool_call_id,
                 tool_result: errorMessage,
                 tool_result_error: true,
+                fn_name: call.fn_name,
             });
         }
 
@@ -408,6 +412,7 @@ export class MagmaAgent {
                         tool_result_id: message.tool_call_id,
                         tool_result: middlewareError,
                         tool_result_error: true,
+                        fn_name: message.fn_name,
                     });
 
                     return await this.main();
@@ -460,6 +465,9 @@ export class MagmaAgent {
                 case 'groq':
                     providerConfig.client ??= new Groq();
                     break;
+                case 'google':
+                    providerConfig.client ??= new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+                    break;
                 default:
                     throw new Error('Invalid provider');
             }
@@ -494,7 +502,10 @@ export class MagmaAgent {
         if ('images' in message) {
             // Validate images are base64 data, not URLs
             for (const image of message.images ?? []) {
-                if (this.providerName === 'anthropic' && typeof image === 'string') {
+                if (
+                    (this.providerName === 'anthropic' || this.providerName === 'google') &&
+                    typeof image === 'string'
+                ) {
                     if (image.startsWith('http')) {
                         throw new Error('Image URLs are not supported by Anthropic');
                     }
@@ -672,6 +683,7 @@ export class MagmaAgent {
                             role: 'tool_result',
                             tool_result_id: toolCall.tool_call_id,
                             tool_result: result,
+                            fn_name: toolCall.fn_name,
                         };
                         this.sendToMagmaFlow({ type: 'message', data: toolResult });
                     } else {
@@ -839,6 +851,7 @@ export class MagmaAgent {
                 role: 'tool_result',
                 tool_result_id: call.tool_call_id,
                 tool_result: result,
+                fn_name: call.fn_name,
             };
 
             this.retryCount = 0;
@@ -851,6 +864,7 @@ export class MagmaAgent {
                 tool_result_id: call.tool_call_id,
                 tool_result: errorMessage,
                 tool_result_error: true,
+                fn_name: call.fn_name,
             };
 
             if (this.connected) {
@@ -887,6 +901,7 @@ export class MagmaAgent {
                     tool_result_id: toolCall.tool_call_id,
                     tool_result: middlewareError,
                     tool_result_error: true,
+                    fn_name: toolCall?.fn_name,
                 });
 
                 call.tool_calls.splice(call.tool_calls.indexOf(toolCall), 1);
@@ -906,6 +921,7 @@ export class MagmaAgent {
                             tool_result: `Tool execution failed: ${error?.message ?? 'Unknown'}`,
                             tool_result_id: toolCall?.tool_call_id,
                             tool_result_error: true,
+                            fn_name: toolCall?.fn_name,
                         });
                     }
                 });

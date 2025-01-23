@@ -1,10 +1,12 @@
 import { MAX_RETRIES, Provider } from '.';
 import {
+    MagmaAssistantMessage,
     MagmaCompletion,
     MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
     MagmaTool,
+    MagmaToolCallMessage,
     MagmaToolParam,
     MagmaUsage,
 } from '../types';
@@ -12,7 +14,7 @@ import {
     ChatCompletionTool as GroqTool,
     ChatCompletionMessageParam as GroqMessageParam,
     ChatCompletionCreateParamsBase as GroqConfig,
-    ChatCompletion,
+    ChatCompletionChunk,
 } from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
 import { cleanParam, mapNumberInRange, sleep } from '../helpers';
@@ -52,7 +54,7 @@ export class GroqProvider extends Provider {
 
     static override async makeCompletionRequest(
         config: MagmaConfig,
-        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
     ): Promise<MagmaCompletion> {
@@ -71,93 +73,108 @@ export class GroqProvider extends Provider {
                     { signal }
                 );
 
-                let buffer = '';
+                let contentBuffer = '';
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
                 };
 
-                const streamedToolCalls: {
-                    id: string;
-                    name: string;
-                    argumentsBuffer: string;
-                    arguments: Record<string, any>;
-                }[] = [];
+                let streamedToolCalls: {
+                    [index: number]: ChatCompletionChunk.Choice.Delta.ToolCall;
+                } = {};
 
                 for await (const chunk of stream) {
+                    let magmaStreamChunk: MagmaStreamChunk = {
+                        id: chunk.id,
+                        provider: 'groq',
+                        model: chunk.model,
+                        delta: {
+                            content: null,
+                            tool_calls: null,
+                        },
+                        buffer: {
+                            content: null,
+                            tool_calls: null,
+                        },
+                        usage: {
+                            input_tokens: null,
+                            output_tokens: null,
+                        },
+                    };
                     const delta = chunk?.choices[0]?.delta;
 
-                    if (chunk.x_groq?.usage) {
-                        usage.input_tokens = chunk.x_groq.usage.prompt_tokens ?? 0;
-                        usage.output_tokens = chunk.x_groq.usage.completion_tokens ?? 0;
-                        continue;
-                    }
+                    for (const toolCall of delta?.tool_calls ?? []) {
+                        const { index } = toolCall;
 
-                    // First stream chunk telling us what tools are being called
-                    if (delta?.tool_calls?.length > 0 && streamedToolCalls.length === 0) {
-                        for (const toolCall of delta.tool_calls) {
-                            streamedToolCalls.push({
-                                id: toolCall.id,
-                                name: toolCall.function.name,
-                                argumentsBuffer: toolCall.function.arguments,
-                                arguments: {},
-                            });
-                        }
-                    } else if (delta?.tool_calls?.length > 0) {
-                        // Subsequent stream chunks with tool call results buffering up
-                        for (const toolCall of delta.tool_calls) {
-                            streamedToolCalls[toolCall.index].argumentsBuffer +=
+                        if (!streamedToolCalls[index]) {
+                            streamedToolCalls[index] = toolCall;
+                        } else {
+                            streamedToolCalls[index].function.arguments +=
                                 toolCall.function.arguments;
                         }
                     }
 
-                    if (streamedToolCalls.length > 0) {
-                        // We are still waiting for tool call results to come in
-                        // We do NOT want to buffer the delta here, as it will be conflated as completion text
-                        // and might go into a tts client unintentionally
-                        continue;
-                    }
-
-                    if (onStreamChunk) {
-                        const delta = chunk.choices[0]?.delta;
-                        if (!delta?.content) continue;
-
-                        buffer += delta.content ?? '';
-
-                        const magmaChunk: MagmaStreamChunk = {
-                            id: chunk.id,
-                            provider: 'groq',
-                            model: groqConfig.model,
-                            delta: {
-                                content: delta.content,
-                                role: delta.role === 'tool' ? 'tool_call' : 'assistant',
-                            },
-                            buffer,
+                    if (chunk.x_groq?.usage) {
+                        usage.input_tokens = chunk.x_groq.usage.prompt_tokens;
+                        usage.output_tokens = chunk.x_groq.usage.completion_tokens;
+                        magmaStreamChunk.usage = {
+                            input_tokens: chunk.x_groq.usage.prompt_tokens,
+                            output_tokens: chunk.x_groq.usage.completion_tokens,
                         };
-
-                        onStreamChunk(magmaChunk);
                     }
+
+                    if (delta?.tool_calls) {
+                        magmaStreamChunk.delta.tool_calls = delta.tool_calls.map((toolCall) => ({
+                            id: streamedToolCalls[toolCall.index].id,
+                            name: toolCall.function.name,
+                            arguments: toolCall.function.arguments,
+                        }));
+                    }
+
+                    if (delta?.content) {
+                        magmaStreamChunk.delta.content = delta.content;
+                        contentBuffer += delta.content;
+                    }
+
+                    if (contentBuffer.length > 0) {
+                        magmaStreamChunk.buffer.content = contentBuffer;
+                    }
+
+                    if (Object.keys(streamedToolCalls).length > 0) {
+                        magmaStreamChunk.buffer.tool_calls = Object.values(streamedToolCalls).map(
+                            (toolCall) => ({
+                                id: toolCall.id,
+                                fn_name: toolCall.function.name,
+                                fn_args: toolCall.function.arguments,
+                            })
+                        );
+                    }
+
+                    onStreamChunk?.(magmaStreamChunk);
                 }
 
                 let magmaMessage: MagmaMessage;
-                if (streamedToolCalls.length > 0) {
-                    // Convert the arguments buffer to an object
-                    const toolCall = streamedToolCalls[0];
-                    toolCall.arguments = JSON.parse(toolCall.argumentsBuffer);
-
+                const toolCalls = Object.values(streamedToolCalls);
+                if (toolCalls.length > 0) {
                     magmaMessage = {
                         role: 'tool_call',
-                        tool_call_id: toolCall.id,
-                        fn_name: toolCall.name,
-                        fn_args: toolCall.arguments,
-                    };
+                        tool_calls: toolCalls.map((toolCall) => ({
+                            id: toolCall.id,
+                            fn_name: toolCall.function.name,
+                            fn_args: JSON.parse(toolCall.function.arguments),
+                        })),
+                        content: contentBuffer,
+                    } as MagmaToolCallMessage;
                 } else {
-                    onStreamChunk();
-                    magmaMessage = { role: 'assistant', content: buffer };
+                    onStreamChunk?.(null);
+                    magmaMessage = {
+                        role: 'assistant',
+                        content: contentBuffer,
+                    } as MagmaAssistantMessage;
                 }
 
                 const magmaCompletion: MagmaCompletion = {
-                    provider: 'groq',
+                    provider: 'openai',
                     model: groqConfig.model,
                     message: magmaMessage,
                     usage,
@@ -165,24 +182,37 @@ export class GroqProvider extends Provider {
 
                 return magmaCompletion;
             } else {
-                const groqCompletion = (await groq.chat.completions.create(groqConfig, {
-                    signal,
-                })) as ChatCompletion;
+                const groqCompletion = await groq.chat.completions.create(
+                    {
+                        ...groqConfig,
+                        stream: false,
+                    },
+                    { signal }
+                );
 
                 const groqMessage = groqCompletion.choices[0].message;
 
                 let magmaMessage: MagmaMessage;
 
                 if (groqMessage.tool_calls) {
-                    const tool_call = groqMessage.tool_calls[0];
+                    const groqToolCalls = groqMessage.tool_calls;
+
                     magmaMessage = {
                         role: 'tool_call',
-                        tool_call_id: tool_call.id,
-                        fn_name: tool_call.function.name,
-                        fn_args: JSON.parse(tool_call.function.arguments),
-                    };
+                        tool_calls: groqToolCalls.map((tool_call) => ({
+                            id: tool_call.id,
+                            fn_name: tool_call.function.name,
+                            fn_args: JSON.parse(tool_call.function.arguments),
+                        })),
+                    } as MagmaToolCallMessage;
+                } else if (groqMessage.content) {
+                    magmaMessage = {
+                        role: 'assistant',
+                        content: groqMessage.content,
+                    } as MagmaAssistantMessage;
                 } else {
-                    magmaMessage = { role: 'assistant', content: groqMessage.content };
+                    console.log(JSON.stringify(groqCompletion.choices[0], null, 2));
+                    throw new Error('Groq completion was null');
                 }
 
                 const magmaCompletion: MagmaCompletion = {
@@ -292,26 +322,26 @@ export class GroqProvider extends Provider {
                 case 'tool_call':
                     groqMessages.push({
                         role: 'assistant',
-                        tool_calls: [
-                            {
-                                type: 'function',
-                                id: message.tool_call_id,
-                                function: {
-                                    name: message.fn_name,
-                                    arguments: JSON.stringify(message.fn_args),
-                                },
+                        tool_calls: message.tool_calls.map((toolCall) => ({
+                            type: 'function',
+                            id: toolCall.id,
+                            function: {
+                                name: toolCall.fn_name,
+                                arguments: JSON.stringify(toolCall.fn_args),
                             },
-                        ],
+                        })),
                     });
                     break;
                 case 'tool_result':
-                    groqMessages.push({
-                        role: 'tool',
-                        tool_call_id: message.tool_result_id,
-                        content: message.tool_result_error
-                            ? `Something went wrong calling your last tool - \n ${message.tool_result}`
-                            : message.tool_result,
-                    });
+                    for (const tool_result of message.tool_results) {
+                        groqMessages.push({
+                            role: 'tool',
+                            tool_call_id: tool_result.id,
+                            content: tool_result.error
+                                ? `Something went wrong calling your last tool - \n ${tool_result.result}`
+                                : tool_result.result,
+                        });
+                    }
                     break;
             }
         }

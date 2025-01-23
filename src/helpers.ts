@@ -1,4 +1,4 @@
-import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob } from './types';
+import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob, MagmaMiddleware } from './types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -66,6 +66,15 @@ export const cleanParam = (
             };
     }
 };
+
+export function loadUtilities(target: any) {
+    const tools = loadTools(target);
+    const hooks = loadHooks(target);
+    const jobs = loadJobs(target);
+    const middleware = loadMiddleware(target);
+
+    return { tools, hooks, jobs, middleware };
+}
 
 /**
  * Helper function to load tools from a class or instance of a class
@@ -171,6 +180,35 @@ export function loadJobs(target: any) {
         .filter((j) => j);
 
     return jobs ?? [];
+}
+
+export function loadMiddleware(target: any) {
+    const isClass = /^\s*class\s+/.test(target.toString());
+    const isInstance = typeof target === 'object' && !isClass ? true : false;
+    let propertyNames = [];
+    let prototype: object = undefined;
+
+    if (isInstance) {
+        prototype = Object.getPrototypeOf(target);
+        propertyNames = Object.getOwnPropertyNames(prototype);
+    } else {
+        propertyNames = Object.getOwnPropertyNames(target);
+    }
+
+    const middleware: MagmaMiddleware[] = propertyNames
+        .map((fxn) => {
+            const method = isInstance ? prototype[fxn] : target[fxn];
+
+            if (!(typeof method === 'function' && '_middlewareTrigger' in method)) return null;
+
+            return {
+                trigger: method['_middlewareTrigger'],
+                action: method.bind(target),
+            } as MagmaMiddleware;
+        })
+        .filter((j) => j);
+
+    return middleware ?? [];
 }
 
 export function mapNumberInRange(

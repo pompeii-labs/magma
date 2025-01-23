@@ -5,7 +5,7 @@ import {
     MagmaToolResult,
     MagmaToolResultMessage,
     MagmaUserMessage,
-} from './index';
+} from '../index';
 
 export const MagmaMiddlewareTriggers = [
     'onCompletion',

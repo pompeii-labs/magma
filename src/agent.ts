@@ -18,16 +18,15 @@ import {
     MagmaToolResultMessage,
     MagmaToolResult,
     MagmaMiddlewareReturnType,
+    MagmaUtilities,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash, loadTools } from './helpers';
+import { hash, loadUtilities } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { WebSocket } from 'ws';
-import { MagmaHook } from './types/hooks';
-import { MagmaJob } from './types/jobs';
 import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
@@ -49,8 +48,7 @@ type AgentProps = {
     providerConfig?: MagmaProviderConfig;
     apiKey?: string;
     fetchSystemPrompts?: () => MagmaSystemMessage[];
-    fetchTools?: () => MagmaTool[];
-    fetchMiddleware?: () => MagmaMiddleware[];
+    fetchUtilities?: () => MagmaUtilities[];
     onError?: (error: Error) => Promise<void>;
     onUsageUpdate?: (usage: object) => Promise<void>;
     logger?: MagmaLogger;
@@ -67,8 +65,7 @@ export class MagmaAgent {
     private messages: MagmaMessage[];
     private middlewareRetries: Record<number, number>;
     private messageContext: number;
-    private defaultTools: MagmaTool[] = [];
-    private defaultMiddleware: MagmaMiddleware[] = [];
+    private defaultUtilities: MagmaUtilities[];
     private abortController: AbortController | null = null;
     private ttsConfig: TTSConfig = undefined;
     private sttConfig: STTConfig = undefined;
@@ -106,12 +103,8 @@ export class MagmaAgent {
             this.fetchSystemPrompts = args.fetchSystemPrompts;
         }
 
-        if (args.fetchTools) {
-            this.fetchTools = args.fetchTools;
-        }
-
-        if (args.fetchMiddleware) {
-            this.fetchMiddleware = args.fetchMiddleware;
+        if (args.fetchUtilities) {
+            this.fetchUtilities = args.fetchUtilities;
         }
 
         if (args.onError) {
@@ -130,8 +123,7 @@ export class MagmaAgent {
         this.retryCount = 0;
         this.middlewareRetries = {};
 
-        this.loadDefaultTools();
-        this.loadDefaultMiddleware();
+        this.loadDefaultUtilities();
 
         this.logger?.debug('Agent initialized');
     }
@@ -187,7 +179,8 @@ export class MagmaAgent {
         tool?: MagmaTool;
         inConversation?: boolean;
     }): Promise<MagmaAssistantMessage | MagmaToolResult> {
-        const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
+        const tool =
+            args.tool ?? this.utilities.flatMap((u) => u.tools).find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
 
@@ -333,9 +326,14 @@ export class MagmaAgent {
                 const lastMessage = this.messages.at(-1);
 
                 const configUpdates: Partial<MagmaFlowConfig> = {};
-                if (this.lastToolHash !== hash(JSON.stringify(this.tools))) {
-                    this.lastToolHash = hash(JSON.stringify(this.tools));
-                    configUpdates.tools = this.tools;
+                if (
+                    this.lastToolHash !==
+                    hash(JSON.stringify(this.utilities.flatMap((u) => u.tools)))
+                ) {
+                    this.lastToolHash = hash(
+                        JSON.stringify(this.utilities.flatMap((u) => u.tools))
+                    );
+                    configUpdates.tools = this.utilities.flatMap((u) => u.tools);
                 }
 
                 if (this.lastSystemPromptHash !== hash(JSON.stringify(this.fetchSystemPrompts()))) {
@@ -391,7 +389,7 @@ export class MagmaAgent {
             } else {
                 const provider = Provider.factory(this.providerName);
 
-                const tools = this.tools;
+                const tools = this.utilities.flatMap((u) => u.tools);
 
                 const completionConfig: MagmaConfig = {
                     ...config,
@@ -678,11 +676,13 @@ export class MagmaAgent {
                 provider: this.providerName,
                 model: this.providerConfig.model,
                 system_prompts: this.fetchSystemPrompts(),
-                tools: this.tools.map((t) => ({
-                    name: t.name,
-                    description: t.description,
-                    params: t.params,
-                })),
+                tools: this.utilities
+                    .flatMap((u) => u.tools)
+                    .map((t) => ({
+                        name: t.name,
+                        description: t.description,
+                        params: t.params,
+                    })),
             } as MagmaFlowConfig;
 
             this.sendToMagmaFlow({ type: 'config', data: config });
@@ -770,104 +770,32 @@ export class MagmaAgent {
         this.magmaFlowSocket.send(JSON.stringify(message));
     }
 
-    private loadDefaultTools(): void {
+    private loadDefaultUtilities(): void {
         try {
-            this.defaultTools = loadTools(this);
+            const utilities = loadUtilities(this);
+            this.defaultUtilities = [utilities];
 
-            this.defaultTools.length > 0 &&
-                this.logger?.info(`Loaded ${this.defaultTools.length} default tools`);
+            utilities.tools.length > 0 &&
+                this.logger?.info(`Loaded ${utilities.tools.length} default tools`);
+            utilities.hooks.length > 0 &&
+                this.logger?.info(`Loaded ${utilities.hooks.length} default hooks`);
+            utilities.middleware.length > 0 &&
+                this.logger?.info(`Loaded ${utilities.middleware.length} default middleware`);
+            utilities.jobs.length > 0 &&
+                this.logger?.info(`Loaded ${utilities.jobs.length} default jobs`);
         } catch (error) {
-            this.logger?.debug(`Failed to load default tools - ${error.message ?? 'Unknown'}`);
+            this.logger?.debug(`Failed to load default utilities - ${error.message ?? 'Unknown'}`);
         }
-    }
-
-    private loadDefaultMiddleware(): void {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const middleware: MagmaMiddleware[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_middlewareTrigger' in method))
-                        return null;
-
-                    const trigger = method['_middlewareTrigger'] as MagmaMiddlewareTriggerType;
-
-                    return {
-                        action: method.bind(this),
-                        trigger,
-                    } as MagmaMiddleware;
-                })
-                .filter((f) => f);
-
-            this.logger?.info(`Loaded ${middleware.length} default middleware`);
-
-            this.defaultMiddleware = middleware ?? [];
-        } catch (error) {
-            this.logger?.debug(`Failed to load default middleware - ${error.message ?? 'Unknown'}`);
-        }
-    }
-
-    private loadHooks(): MagmaHook[] {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const hooks: MagmaHook[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_hookName' in method)) return null;
-
-                    return {
-                        name: method['_hookName'],
-                        handler: method.bind(this),
-                    } as MagmaHook;
-                })
-                .filter((h) => h);
-
-            return hooks;
-        } catch (error) {
-            this.logger?.debug(`Failed to load hooks - ${error.message ?? 'Unknown'}`);
-        }
-
-        return [];
-    }
-
-    private loadJobs(): MagmaJob[] {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const jobs: MagmaJob[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_schedule' in method)) return null;
-
-                    return {
-                        handler: method.bind(this),
-                        schedule: method['_schedule'],
-                        options: method['_options'],
-                    } as MagmaJob;
-                })
-                .filter((j) => j);
-
-            return jobs;
-        } catch (error) {
-            this.logger?.debug(`Failed to load jobs - ${error.message ?? 'Unknown'}`);
-        }
-
-        return [];
     }
 
     public scheduleJobs({ verbose = false }: { verbose?: boolean } = {}): void {
-        const jobs = this.loadJobs();
+        const jobs = this.utilities.flatMap((u) => u.jobs);
 
         for (const job of jobs) {
-            if (verbose) console.log(`Scheduling job with ${job.schedule}`);
+            if (verbose)
+                this.logger?.info(
+                    `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
+                );
             cron.schedule(job.schedule, job.handler.bind(this), job.options);
         }
     }
@@ -886,7 +814,9 @@ export class MagmaAgent {
         for (const toolCall of call.tool_calls) {
             let toolResult: MagmaToolResult;
             try {
-                const tool = this.tools.find((t) => t.name === toolCall.fn_name);
+                const tool = this.utilities
+                    .flatMap((u) => u.tools)
+                    .find((t) => t.name === toolCall.fn_name);
                 if (!tool)
                     throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
 
@@ -950,7 +880,9 @@ export class MagmaAgent {
         // Determine whether there are relevant middleware actions to run
         let middleware: MagmaMiddleware[] | null;
         try {
-            middleware = this.middleware.filter((f) => f.trigger === trigger);
+            middleware = this.utilities
+                .flatMap((u) => u.middleware)
+                .filter((f) => f.trigger === trigger);
             if (!middleware || middleware.length === 0) return null;
         } catch (e) {
             return null;
@@ -1033,29 +965,17 @@ export class MagmaAgent {
 
     /* GETTERS */
 
-    private get tools(): MagmaTool[] {
-        return [...this.defaultTools, ...this.fetchTools()];
-    }
-
-    private get middleware(): MagmaMiddleware[] {
-        return [...this.defaultMiddleware, ...this.fetchMiddleware()];
-    }
-
-    private get hooks(): MagmaHook[] {
-        return this.loadHooks();
+    private get utilities(): MagmaUtilities[] {
+        return [...this.defaultUtilities, ...this.fetchUtilities()];
     }
 
     /* EVENT HANDLERS */
 
-    fetchTools(): MagmaTool[] {
-        return [];
-    }
-
-    fetchMiddleware(): MagmaMiddleware[] {
-        return [];
-    }
-
     fetchSystemPrompts(): MagmaSystemMessage[] {
+        return [];
+    }
+
+    fetchUtilities(): MagmaUtilities[] {
         return [];
     }
 

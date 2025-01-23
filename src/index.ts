@@ -1,3 +1,3 @@
-export { loadTools, loadHooks, loadJobs } from './helpers';
+export { loadUtilities } from './helpers';
 
 export { MagmaAgent } from './agent';

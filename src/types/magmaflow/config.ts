@@ -1,7 +1,7 @@
 import { OpenAIModel, AnthropicModel } from '../providers';
 import { MagmaSystemMessage } from '../messages';
 import { GroqModel } from '../providers';
-import { MagmaTool } from '../tools';
+import { MagmaTool } from '../utilities/tools';
 import { STTConfig } from './stt';
 import { TTSConfig } from './tts';
 

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MAX_RETRIES, Provider } from '.';
 import {
     MagmaCompletion,
+    MagmaCompletionStopReason,
     MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
@@ -16,6 +17,7 @@ import {
     Message as AnthropicMessage,
     ImageBlockParam,
     ToolUseBlock,
+    Message,
 } from '@anthropic-ai/sdk/resources/messages';
 import { Logger } from '../logger';
 import { cleanParam, sleep } from '../helpers';
@@ -187,6 +189,8 @@ export class AnthropicProvider extends Provider {
 
                 let id = stream._request_id;
 
+                let stopReason: MagmaCompletionStopReason = null;
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id,
@@ -204,6 +208,7 @@ export class AnthropicProvider extends Provider {
                             input_tokens: null,
                             output_tokens: null,
                         },
+                        stop_reason: null,
                     };
 
                     switch (chunk.type) {
@@ -219,6 +224,10 @@ export class AnthropicProvider extends Provider {
                         case 'message_delta':
                             usage.output_tokens += chunk.usage.output_tokens;
                             magmaStreamChunk.usage.output_tokens = chunk.usage.output_tokens;
+                            if (chunk.delta.stop_reason) {
+                                stopReason = this.convertStopReason(chunk.delta.stop_reason);
+                                magmaStreamChunk.stop_reason = stopReason;
+                            }
                             break;
                         case 'content_block_start':
                             if (chunk.content_block.type === 'tool_use') {
@@ -277,6 +286,7 @@ export class AnthropicProvider extends Provider {
                                 model: anthropicConfig.model,
                                 message: magmaMessage,
                                 usage: usage,
+                                stop_reason: stopReason,
                             };
 
                             return magmaCompletion;
@@ -345,6 +355,7 @@ export class AnthropicProvider extends Provider {
                         input_tokens: anthropicCompletion.usage.input_tokens,
                         output_tokens: anthropicCompletion.usage.output_tokens,
                     },
+                    stop_reason: this.convertStopReason(anthropicCompletion.stop_reason),
                 };
 
                 return magmaCompletion;
@@ -387,5 +398,20 @@ export class AnthropicProvider extends Provider {
         }
 
         return anthropicTools;
+    }
+
+    static override convertStopReason(
+        stop_reason: Message['stop_reason']
+    ): MagmaCompletionStopReason {
+        switch (stop_reason) {
+            case 'end_turn':
+                return 'natural';
+            case 'max_tokens':
+                return 'max_tokens';
+            case 'tool_use':
+                return 'tool_call';
+            default:
+                return 'unknown';
+        }
     }
 }

@@ -3,6 +3,7 @@ import { MAX_RETRIES, Provider } from '.';
 import {
     MagmaAssistantMessage,
     MagmaCompletion,
+    MagmaCompletionStopReason,
     MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
@@ -18,6 +19,7 @@ import {
 } from 'openai/resources/index';
 import { cleanParam, mapNumberInRange, sleep } from '../helpers';
 import {
+    ChatCompletion,
     ChatCompletionChunk,
     ChatCompletionCreateParamsBase,
 } from 'openai/resources/chat/completions';
@@ -55,6 +57,8 @@ export class OpenAIProvider extends Provider {
                     [index: number]: ChatCompletionChunk.Choice.Delta.ToolCall;
                 } = {};
 
+                let stopReason: MagmaCompletionStopReason = null;
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id: chunk.id,
@@ -72,9 +76,16 @@ export class OpenAIProvider extends Provider {
                             input_tokens: null,
                             output_tokens: null,
                         },
+                        stop_reason: null,
                     };
 
-                    const delta = chunk.choices[0]?.delta;
+                    const choice = chunk.choices[0];
+                    const delta = choice?.delta;
+
+                    if (choice?.finish_reason) {
+                        stopReason = this.convertStopReason(choice.finish_reason);
+                        magmaStreamChunk.stop_reason = stopReason;
+                    }
 
                     for (const toolCall of delta?.tool_calls ?? []) {
                         const { index } = toolCall;
@@ -151,6 +162,7 @@ export class OpenAIProvider extends Provider {
                     model: openAIConfig.model,
                     message: magmaMessage,
                     usage,
+                    stop_reason: stopReason,
                 };
 
                 return magmaCompletion;
@@ -163,11 +175,12 @@ export class OpenAIProvider extends Provider {
                     { signal }
                 );
 
-                const openAIMessage = openAICompletion.choices[0].message;
+                const choice = openAICompletion.choices[0];
+                const openAIMessage = choice?.message;
 
                 let magmaMessage: MagmaMessage;
 
-                if (openAIMessage.tool_calls) {
+                if (openAIMessage?.tool_calls) {
                     const openaiToolCalls = openAIMessage.tool_calls;
 
                     magmaMessage = {
@@ -178,7 +191,7 @@ export class OpenAIProvider extends Provider {
                             fn_args: JSON.parse(tool_call.function.arguments),
                         })),
                     } as MagmaToolCallMessage;
-                } else if (openAIMessage.content) {
+                } else if (openAIMessage?.content) {
                     magmaMessage = {
                         role: 'assistant',
                         content: openAIMessage.content,
@@ -196,6 +209,7 @@ export class OpenAIProvider extends Provider {
                         input_tokens: openAICompletion.usage.prompt_tokens,
                         output_tokens: openAICompletion.usage.completion_tokens,
                     },
+                    stop_reason: this.convertStopReason(choice?.finish_reason),
                 };
 
                 return magmaCompletion;
@@ -355,5 +369,23 @@ export class OpenAIProvider extends Provider {
         }
 
         return openAIMessages;
+    }
+
+    static override convertStopReason(
+        stop_reason: ChatCompletion.Choice['finish_reason']
+    ): MagmaCompletionStopReason {
+        switch (stop_reason) {
+            case 'stop':
+                return 'natural';
+            case 'tool_calls':
+            case 'function_call':
+                return 'tool_call';
+            case 'content_filter':
+                return 'content_filter';
+            case 'length':
+                return 'max_tokens';
+            default:
+                return 'unknown';
+        }
     }
 }

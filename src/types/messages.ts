@@ -1,10 +1,19 @@
 import { MagmaProvider } from './providers';
 
+export type MagmaCompletionStopReason =
+    | 'natural'
+    | 'tool_call'
+    | 'content_filter'
+    | 'max_tokens'
+    | 'unsupported'
+    | 'unknown';
+
 export type MagmaCompletion = {
     message: MagmaAssistantMessage | MagmaToolCallMessage | MagmaToolResultMessage;
     provider: MagmaProvider;
     model: string;
     usage: MagmaUsage;
+    stop_reason: MagmaCompletionStopReason;
 };
 
 export type MagmaUsage = {
@@ -95,7 +104,7 @@ export type MagmaStreamChunk = {
               }[]
             | null;
     };
-    reason?: string;
+    stop_reason: MagmaCompletionStopReason;
     usage: {
         input_tokens: number | null;
         output_tokens: number | null;

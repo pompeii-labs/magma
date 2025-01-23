@@ -311,14 +311,15 @@ export class MagmaAgent {
     public async main(config?: MagmaConfig): Promise<MagmaAssistantMessage> {
         try {
             // Call 'preCompletion' middleware
-            if (this.messages.some((s) => s.role === 'user')) {
+            if (this.messages.at(-1)?.role === 'user') {
                 const middlewareError = await this.runMiddleware(
                     'preCompletion',
-                    this.messages.filter((s) => s.role === 'user').at(-1)
+                    this.messages.at(-1)
                 );
                 if (middlewareError) {
                     // If the middleware throws an error, return an assistant message with the error to notify the user
-                    // We can also add a call to onCompletion middleware here, but it is unclear if we should
+                    // remove the user message from the messages array
+                    this.messages.pop();
                     return {
                         role: 'assistant',
                         content: middlewareError,
@@ -431,7 +432,7 @@ export class MagmaAgent {
 
                 if (middlewareError) {
                     // some tool calls threw errors in preToolExecution middleware, add their ids to the rejectedToolCallIds array
-                    rejectedToolCallIds.push(...middlewareError.tool_results.map((r) => r.id));
+                    rejectedToolCallIds = middlewareError.tool_results.map((r) => r.id);
                 }
 
                 // Filter out the tool calls that threw errors in preToolExecution middleware
@@ -450,15 +451,12 @@ export class MagmaAgent {
                     toolResultMessage.tool_results.push(...middlewareError.tool_results);
                 }
 
-                // Reset the rejectedToolCallIds array
-                rejectedToolCallIds = [];
-
                 // Run the 'onToolExecution' middleware
                 middlewareError = await this.runMiddleware('onToolExecution', toolResultMessage);
 
                 if (middlewareError) {
                     // some tool calls threw errors in onToolExecution middleware, add their ids to the rejectedToolCallIds array
-                    rejectedToolCallIds.push(...middlewareError.tool_results.map((r) => r.id));
+                    rejectedToolCallIds = middlewareError.tool_results.map((r) => r.id);
 
                     // Filter out the tool calls that threw errors in onToolExecution middleware
                     toolResultMessage.tool_results = toolResultMessage.tool_results.filter(
@@ -478,7 +476,19 @@ export class MagmaAgent {
                 return await this.main();
             } else {
                 const middlewareError = await this.runMiddleware('onCompletion', message);
+
                 if (middlewareError) {
+                    // If the last message is not a user message, remove it to enforce user / assistant alternation
+                    if (this.messages.at(-1).role !== 'user') {
+                        this.messages.pop();
+                    }
+
+                    // Add a system message with all the errors from middleware
+                    this.addMessage({
+                        role: 'system',
+                        content: middlewareError,
+                    });
+
                     return await this.main();
                 }
 
@@ -1003,21 +1013,7 @@ export class MagmaAgent {
         if (middlewareErrors.length > 0) {
             switch (trigger) {
                 case 'preCompletion':
-                    // If there are errors in preCompletion middleware, just return the error message
-                    return middlewareErrors.join('\n') as MagmaMiddlewareReturnType<T>;
                 case 'onCompletion':
-                    // if there are errors in onCompletion middleware, add a system message with the errors
-                    // If the last message is not a user message, remove it to enforce user / assistant alternation
-                    if (this.messages.at(-1).role !== 'user') {
-                        this.messages.pop();
-                    }
-
-                    // Add a system message with all the errors from middleware
-                    this.addMessage({
-                        role: 'system',
-                        content: middlewareErrors.join('\n'),
-                    });
-
                     // Return the errors so we can handle conversation flow
                     return middlewareErrors.join('\n') as MagmaMiddlewareReturnType<T>;
                 case 'preToolExecution':

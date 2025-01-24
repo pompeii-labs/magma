@@ -1,21 +1,16 @@
 import {
     Content,
-    DynamicRetrievalMode,
     FunctionCallingMode,
     FunctionDeclaration,
     FunctionDeclarationSchema,
-    FunctionDeclarationSchemaProperty,
     GoogleGenerativeAI,
-    InlineDataPart,
     ModelParams,
     Part,
-    SchemaType,
     Tool,
     ToolConfig,
 } from '@google/generative-ai';
 import { MAX_RETRIES, Provider } from '.';
 import {
-    GoogleProviderConfig,
     MagmaCompletion,
     MagmaConfig,
     MagmaMessage,
@@ -24,13 +19,13 @@ import {
     MagmaToolParam,
     MagmaUsage,
 } from '../types';
-import { cleanParam, mapNumberInRange, sleep } from '../helpers';
+import { cleanParam, sleep } from '../helpers';
 import { Logger } from '../logger';
 
 export class GoogleProvider extends Provider {
     static override async makeCompletionRequest(
         config: MagmaConfig,
-        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
     ): Promise<MagmaCompletion> {
@@ -47,7 +42,7 @@ export class GoogleProvider extends Provider {
                     { contents: this.convertMessages(config.messages) },
                     { signal }
                 );
-                let buffer = '';
+                let contentBuffer = '';
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
@@ -59,54 +54,80 @@ export class GoogleProvider extends Provider {
                     arguments: Record<string, any>;
                 }[] = [];
 
+                let id = crypto.randomUUID();
+
                 for await (const chunk of stream) {
-                    // First stream chunk telling us what tools are being called
+                    let magmaStreamChunk: MagmaStreamChunk = {
+                        id,
+                        provider: 'google',
+                        model: googleConfig.model,
+                        delta: {
+                            content: null,
+                            tool_calls: null,
+                        },
+                        buffer: {
+                            content: null,
+                            tool_calls: null,
+                        },
+                        usage: {
+                            input_tokens: null,
+                            output_tokens: null,
+                        },
+                    };
+
+                    if (chunk.usageMetadata) {
+                        magmaStreamChunk.usage.input_tokens = chunk.usageMetadata.promptTokenCount;
+                        magmaStreamChunk.usage.output_tokens =
+                            chunk.usageMetadata.candidatesTokenCount;
+                    }
+
+                    if (chunk.text().length > 0) {
+                        magmaStreamChunk.delta.content = chunk.text();
+                        contentBuffer += chunk.text();
+                    }
+
                     if (chunk.functionCalls()?.length > 0) {
                         for (const toolCall of chunk.functionCalls()) {
                             streamedToolCalls.push({
                                 id: crypto.randomUUID(),
                                 name: toolCall.name,
-                                arguments: {},
+                                arguments: toolCall.args,
                             });
                         }
                     }
-                    if (chunk.usageMetadata) {
-                        usage.input_tokens = chunk.usageMetadata.promptTokenCount;
-                        usage.output_tokens = chunk.usageMetadata.candidatesTokenCount;
-                        continue;
+
+                    if (contentBuffer.length > 0) {
+                        magmaStreamChunk.buffer.content = contentBuffer;
                     }
-                    if (onStreamChunk) {
-                        const delta = chunk;
-                        buffer += delta.text() ?? '';
-                        const magmaChunk: MagmaStreamChunk = {
-                            id: crypto.randomUUID(),
-                            provider: 'google',
-                            model: googleConfig.model,
-                            delta: {
-                                content:
-                                    delta.functionCalls()?.length > 0
-                                        ? delta.functionCalls().toString()
-                                        : delta.text(),
-                                role: delta.functionCalls()?.length > 0 ? 'tool_call' : 'assistant',
-                            },
-                            buffer,
-                        };
-                        onStreamChunk(magmaChunk);
+
+                    if (streamedToolCalls.length > 0) {
+                        magmaStreamChunk.buffer.tool_calls = streamedToolCalls.map((toolCall) => ({
+                            id: toolCall.id,
+                            name: toolCall.name,
+                            arguments: JSON.stringify(toolCall.arguments),
+                        }));
                     }
+
+                    onStreamChunk?.(magmaStreamChunk);
                 }
+
+                onStreamChunk?.(null);
                 let magmaMessage: MagmaMessage;
                 if (streamedToolCalls.length > 0) {
                     // Convert the arguments buffer to an object
-                    const toolCall = streamedToolCalls[0];
                     magmaMessage = {
                         role: 'tool_call',
-                        tool_call_id: toolCall.id,
-                        fn_name: toolCall.name,
-                        fn_args: toolCall.arguments,
+                        tool_calls: streamedToolCalls.map((toolCall) => ({
+                            id: toolCall.id,
+                            fn_name: toolCall.name,
+                            fn_args: toolCall.arguments,
+                        })),
                     };
+                    if (contentBuffer.length > 0) {
+                        magmaMessage.content = contentBuffer;
+                    }
                 } else {
-                    onStreamChunk();
-                    magmaMessage = { role: 'assistant', content: buffer };
+                    magmaMessage = { role: 'assistant', content: contentBuffer };
                 }
                 const magmaCompletion: MagmaCompletion = {
                     provider: 'google',
@@ -125,21 +146,24 @@ export class GoogleProvider extends Provider {
 
                 let magmaMessage: MagmaMessage;
 
-                if (googleCompletion.response.functionCalls()) {
-                    const googleToolCalls = googleCompletion.response.functionCalls();
+                const functionCalls = googleCompletion.response.functionCalls();
+                const text = googleCompletion.response.text();
 
-                    if (googleToolCalls.length === 1) {
-                        const tool_call = googleToolCalls[0];
+                if (functionCalls?.length > 0) {
+                    magmaMessage = {
+                        role: 'tool_call',
+                        tool_calls: functionCalls.map((toolCall) => ({
+                            id: crypto.randomUUID(),
+                            fn_name: toolCall.name,
+                            fn_args: toolCall.args,
+                        })),
+                    };
 
-                        magmaMessage = {
-                            role: 'tool_call',
-                            tool_call_id: crypto.randomUUID(),
-                            fn_name: tool_call.name,
-                            fn_args: tool_call.args,
-                        };
+                    if (text?.length > 0) {
+                        magmaMessage.content = text;
                     }
-                } else if (googleCompletion.response.text()) {
-                    magmaMessage = { role: 'assistant', content: googleCompletion.response.text() };
+                } else if (text?.length > 0) {
+                    magmaMessage = { role: 'assistant', content: text };
                 } else {
                     console.log(JSON.stringify(googleCompletion.response, null, 2));
                     throw new Error('Google completion was null');
@@ -287,33 +311,30 @@ export class GoogleProvider extends Provider {
                     });
                     break;
                 case 'tool_call':
+                    const toolCalls = message.tool_calls;
                     googleMessages.push({
                         role: 'model',
-                        parts: [
-                            {
-                                functionCall: {
-                                    name: message.fn_name,
-                                    args: message.fn_args,
-                                },
+                        parts: toolCalls.map((toolCall) => ({
+                            functionCall: {
+                                name: toolCall.fn_name,
+                                args: toolCall.fn_args,
                             },
-                        ],
+                        })),
                     });
                     break;
                 case 'tool_result':
                     googleMessages.push({
                         role: 'model',
-                        parts: [
-                            {
-                                functionResponse: {
-                                    name: message.fn_name,
-                                    response: message.tool_result_error
-                                        ? {
-                                              error: `Something went wrong calling your last tool - \n ${message.tool_result}`,
-                                          }
-                                        : { result: message.tool_result },
-                                },
+                        parts: message.tool_results.map((toolResult) => ({
+                            functionResponse: {
+                                name: toolResult.fn_name,
+                                response: toolResult.error
+                                    ? {
+                                          error: `Something went wrong calling your last tool - \n ${toolResult.result}`,
+                                      }
+                                    : { result: toolResult.result },
                             },
-                        ],
+                        })),
                     });
                     break;
             }

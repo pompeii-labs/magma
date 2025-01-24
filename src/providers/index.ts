@@ -49,7 +49,7 @@ export abstract class Provider implements ProviderProps {
 
     static async makeCompletionRequest(
         config: MagmaConfig,
-        onStreamChunk?: (chunk?: MagmaStreamChunk) => Promise<void>,
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
     ): Promise<MagmaCompletion> {

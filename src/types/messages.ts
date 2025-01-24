@@ -1,7 +1,7 @@
 import { MagmaProvider } from './providers';
 
 export type MagmaCompletion = {
-    message: MagmaMessage;
+    message: MagmaAssistantMessage | MagmaToolCallMessage | MagmaToolResultMessage;
     provider: MagmaProvider;
     model: string;
     usage: MagmaUsage;
@@ -24,10 +24,8 @@ export type MagmaMessage =
     | MagmaSystemMessage
     | MagmaAssistantMessage
     | MagmaUserMessage
-    | MagmaToolCall
-    | MagmaMultiToolCall
-    | MagmaToolResult
-    | MagmaMultiToolResult;
+    | MagmaToolCallMessage
+    | MagmaToolResultMessage;
 
 export type MagmaSystemMessage = {
     id?: string | number;
@@ -50,47 +48,56 @@ export type MagmaAssistantMessage = {
 
 // Provider-agnostic tool/function type
 export type MagmaToolCall = {
-    role: 'tool_call';
-    tool_call_id: string;
+    id: string;
     fn_name: string;
     fn_args: Record<string, any>;
 };
 
-export type MagmaMultiToolCall = {
-    role: 'multi_tool_call';
-    tool_calls: MagmaToolCall[];
-};
-
 export type MagmaToolResult = {
-    role: 'tool_result';
-    tool_result_id: string;
-    tool_result: string;
-    tool_result_error?: boolean;
+    id: string;
+    result: string;
+    error?: boolean;
     fn_name: string;
 };
 
-export type MagmaMultiToolResult = {
-    role: 'multi_tool_result';
+export type MagmaToolCallMessage = {
+    role: 'tool_call';
+    content?: string;
+    tool_calls: MagmaToolCall[];
+};
+
+export type MagmaToolResultMessage = {
+    role: 'tool_result';
     tool_results: MagmaToolResult[];
 };
 
 export type MagmaStreamChunk = {
-    id?: string;
+    id: string;
     provider: MagmaProvider;
     model: string;
     delta: {
-        role?: 'assistant' | 'tool_call';
-        content?: string;
-        tool_call?: {
-            id?: string;
-            name?: string;
-            arguments?: string;
-        };
+        content: string | null;
+        tool_calls:
+            | {
+                  id?: string;
+                  name?: string;
+                  arguments?: string;
+              }[]
+            | null;
     };
-    buffer?: string;
+    buffer: {
+        content: string | null;
+        tool_calls:
+            | {
+                  id?: string;
+                  name?: string;
+                  arguments?: string;
+              }[]
+            | null;
+    };
     reason?: string;
-    usage?: {
-        input_tokens?: number;
-        output_tokens?: number;
+    usage: {
+        input_tokens: number | null;
+        output_tokens: number | null;
     };
 };

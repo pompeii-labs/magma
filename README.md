@@ -34,26 +34,23 @@ npm i @pompeii-labs/magma
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
 
-// That's it! You've got a working agent
-const agent = new MagmaAgent();
+// Magma Agents are class based, so you can extend them with your own methods
+class MyAgent extends MagmaAgent {
 
-// Want to give it some personality? Add system prompts:
-agent.fetchSystemPrompts = () => [{
-    role: "system",
-    content: "You are a friendly assistant who loves dad jokes"
-}];
-
-// Need the agent to do something? Add tools:
-agent.fetchTools = () => [{
-    name: "tell_joke",
-    description: "Tell a dad joke",
-    target: async () => {
-        return "Why don't eggs tell jokes? They'd crack up! 🥚";
+    // Want to give it some personality? Add system prompts:
+    getSystemPrompts() {
+        return [{
+            role: "system",
+            content: "You are a friendly assistant who loves dad jokes"
+        }];
     }
-}];
+}
+
+// That's it! You've got a working agent
+const myAgent = new MyAgent();
 
 // Run it:
-const reply = await agent.main();
+const reply = await myAgent.main();
 console.log(reply.content);
 ```
 
@@ -61,27 +58,9 @@ console.log(reply.content);
 
 - **Simple**: Build agents in minutes with minimal code
 - **Flexible**: Use any AI provider (OpenAI, Anthropic, Groq)
-- **Hosted**: Deploy your agents in seconds with the MagmaDeploy platform (coming soon)
+- **Hosted**: Deploy your agents in seconds with the [MagmaDeploy platform](https://magmadeploy.com)
 - **Powerful**: Add tools and middleware when you need them
 - **Observable**: See exactly what your agent is doing
-
-## 🚀 MagmaFlow
-
-Want even more power? MagmaFlow gives you instant access to:
-- Voice input/output
-- Streaming responses
-- Tool execution
-- Usage tracking
-- And more!
-
-
-```ts
-const agent = new MagmaAgent({
-    apiKey: "mf_..." // Get your key at magmaflow.dev
-});
-```
-
-> 🎉 MagmaFlow is currently in private beta! [Join the waitlist](https://magmaflow.dev) to get early access.
 
 ## 🛠 Examples
 
@@ -118,7 +97,10 @@ class MyAgent extends MagmaAgent {
     })
     async searchDatabase(call: MagmaToolCall) {
         const { query, filters } = call.fn_args;
-        // Implementation
+
+        const results = await this.searchDatabase(query, filters);
+
+        return "Here are the results of your search: " + JSON.stringify(results);
     }
 }
 ```
@@ -128,9 +110,22 @@ Middleware is a novel concept to Magma. It allows you to add custom logic to you
 
 This is a great way to add custom logging, validation, data sanitization, etc.
 
+**Types**:
+- "preCompletion": Runs before the LLM call is made, takes in a MagmaUserMessage
+- "onCompletion": Runs after the agent generates a text response, takes in a MagmaAssistantMessage
+- "preToolExecution": Runs before a tool is executed, takes in a MagmaToolCall
+- "onToolExecution": Runs after a tool is executed, takes in a MagmaToolResult
+
 **Important Notes**:
 - You can have unlimited middleware methods
-- Middleware methods must return a string
+- Middleware methods can manipulate the message they take in
+- Middleware methods can throw errors to adjust the flow of the agent
+
+**Error Handling**:
+- If preCompletion middleware throws an error, the error message is supplied as if it were the assistant message. The user and assistant messages are also removed from the conversation history
+- If onCompletion middleware throws an error, the error message is supplied to the LLM, and it tries to regenerate a response. The assistant message is not added to the conversation history
+- If preToolExecution middleware throws an error, the error message is supplied as if it were the response from the tool
+- If onToolExecution middleware throws an error, the error message is supplied as if it were the response from the tool
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
 import { middleware } from "@pompeii-labs/magma/decorators";
@@ -144,7 +139,7 @@ class MyAgent extends MagmaAgent {
     @middleware("onCompletion")
     async logBeforeCompletion(message) {
         if (message.content.includes("bad word")) {
-            return "You just used a bad word, please try again.";
+            throw new Error("You just used a bad word, please try again.");
         }
     }
 }
@@ -152,6 +147,10 @@ class MyAgent extends MagmaAgent {
 
 ### Schedule Jobs
 Jobs allow you to schedule functions within your agent. Jobs conform to the standard UNIX cron syntax (https://crontab.guru/).
+
+**Important Notes**:
+- Jobs should be static methods, so they can run without instantiating the agent.
+- Jobs do not take in any parameters, and they do not return anything.
 ```ts
 import { MagmaAgent } from "@pompeii-labs/magma";
 import { job } from "@pompeii-labs/magma/decorators";
@@ -159,13 +158,13 @@ import { job } from "@pompeii-labs/magma/decorators";
 class MyAgent extends MagmaAgent {
     // Run every day at midnight
     @job("0 0 * * *")
-    async dailyCleanup() {
+    static async dailyCleanup() {
         await this.cleanDatabase();
     }
 
     // Run every hour with timezone
     @job("0 * * * *", { timezone: "America/New_York" })
-    async hourlySync() {
+    static async hourlySync() {
         await this.syncData();
     }
 }
@@ -174,7 +173,9 @@ class MyAgent extends MagmaAgent {
 ### Expose Hooks
 Hooks allow you to expose your agent as an API. Any method decorated with @hook will be exposed as an endpoint.
 
+
 **Important Notes**:
+- Hooks are static methods, so they can run without instantiating the agent.
 - Hooks are exposed at `/hooks/{hook_name}` in the Magma API
 - The only parameter to hook functions is the request object, which is an instance of `express.Request`
 ```ts
@@ -185,13 +186,18 @@ import { Request } from "express";
 class MyAgent extends MagmaAgent {
 
     @hook('notification')
-    async handleNotification(req: Request) {
+    static async handleNotification(req: Request) {
         await this.processNotification(req.body);
     }
 }
 ```
 
 ### Use Different Providers
+You can use any supported provider by setting the providerConfig.
+
+**Important Notes**:
+- You can set the providerConfig in the constructor, or by calling `setProviderConfig`
+- You do not need to adjust any of your tools, middleware, jobs, or hooks to use a different provider. Magma will handle the rest.
 ```ts
 class Agent extends MagmaAgent {
     constructor() {
@@ -219,11 +225,16 @@ class Agent extends MagmaAgent {
 ```
 
 ### State Management
-Every agent has a state object that you can use to store data.
+Every agent has a state object that you can use to store data. You can store any data type, and it will be persisted between calls.
+You can also choose to use fields on the agent class to store data.
 
 State does not get passed into LLM calls, so it's a good place to store data that you want to persist between calls / sensitive data.
+
 ```ts
 class MyAgent extends MagmaAgent {
+    // Using a field to store data
+    myQuery = "Hello, world!";
+
     async setup() {
         // Initialize state
         this.state.set("counter", 0);
@@ -240,7 +251,16 @@ class MyAgent extends MagmaAgent {
     @tool({ name: "api_call" })
     async apiCall() {
         const access_token = this.state.get("access_token");
-        // Make API call
+        const response = await fetch("https://myapi.com/data", {
+            headers: {
+                "Authorization": `Bearer ${access_token}`
+            },
+            body: JSON.stringify({
+                query: this.myQuery
+            })
+        });
+
+        return JSON.stringify(response.json());
     }
 }
 ```
@@ -301,33 +321,6 @@ class MyAgent extends MagmaAgent {
     // Process streaming responses
     async onStreamChunk(chunk: MagmaStreamChunk) {
         console.log("Received chunk:", chunk.content);
-    }
-
-    // MagmaFlow Handlers
-    async onConnect() {
-        console.log("Connected to MagmaFlow!");
-    }
-
-    // Handle agent disconnection from MagmaFlow
-    async onDisconnect() {
-        console.log("Disconnected from MagmaFlow");
-    }
-
-    // Handle incoming audio chunks
-    async onAudioChunk(chunk: Buffer) {
-        // Process incoming audio
-        await this.processAudioChunk(chunk);
-    }
-
-    // Handle audio stream completion
-    async onAudioCommit() {
-        // Audio stream complete
-        await this.finalizeAudioProcessing();
-    }
-
-    // Handle request abortion
-    async onAbort() {
-        await this.cleanup();
     }
 }
 ```

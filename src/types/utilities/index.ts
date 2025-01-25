@@ -9,8 +9,8 @@ export * from './middleware';
 export * from './tools';
 
 export type MagmaUtilities = {
-    tools: MagmaTool[];
-    middleware: MagmaMiddleware[];
-    hooks: MagmaHook[];
-    jobs: MagmaJob[];
+    tools?: MagmaTool[];
+    middleware?: MagmaMiddleware[];
+    hooks?: MagmaHook[];
+    jobs?: MagmaJob[];
 };

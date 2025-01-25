@@ -126,8 +126,7 @@ export class MagmaAgent {
         tool?: MagmaTool;
         inConversation?: boolean;
     }): Promise<MagmaAssistantMessage | MagmaToolResult> {
-        const tool =
-            args.tool ?? this.utilities.flatMap((u) => u.tools).find((t) => t.name === args.name);
+        const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
 
@@ -522,9 +521,7 @@ export class MagmaAgent {
         for (const toolCall of call.tool_calls) {
             let toolResult: MagmaToolResult;
             try {
-                const tool = this.utilities
-                    .flatMap((u) => u.tools)
-                    .find((t) => t.name === toolCall.fn_name);
+                const tool = this.tools.find((t) => t.name === toolCall.fn_name);
                 if (!tool)
                     throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
 
@@ -579,9 +576,7 @@ export class MagmaAgent {
         // Determine whether there are relevant middleware actions to run
         let middleware: MagmaMiddleware[] | null;
         try {
-            middleware = this.utilities
-                .flatMap((u) => u.middleware)
-                .filter((f) => f.trigger === trigger);
+            middleware = this.middleware.filter((f) => f.trigger === trigger);
             if (!middleware || middleware.length === 0) return null;
         } catch (e) {
             return null;

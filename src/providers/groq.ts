@@ -2,6 +2,7 @@ import { MAX_RETRIES, Provider } from '.';
 import {
     MagmaAssistantMessage,
     MagmaCompletion,
+    MagmaCompletionStopReason,
     MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
@@ -15,6 +16,7 @@ import {
     ChatCompletionMessageParam as GroqMessageParam,
     ChatCompletionCreateParamsBase as GroqConfig,
     ChatCompletionChunk,
+    ChatCompletion,
 } from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
 import { cleanParam, mapNumberInRange, sleep } from '../helpers';
@@ -83,6 +85,8 @@ export class GroqProvider extends Provider {
                     [index: number]: ChatCompletionChunk.Choice.Delta.ToolCall;
                 } = {};
 
+                let stopReason: MagmaCompletionStopReason = null;
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id: chunk.id,
@@ -100,8 +104,16 @@ export class GroqProvider extends Provider {
                             input_tokens: null,
                             output_tokens: null,
                         },
+                        stop_reason: null,
                     };
-                    const delta = chunk?.choices[0]?.delta;
+
+                    const choice = chunk.choices[0];
+                    const delta = choice?.delta;
+
+                    if (choice?.finish_reason) {
+                        stopReason = this.convertStopReason(choice.finish_reason);
+                        magmaStreamChunk.stop_reason = stopReason;
+                    }
 
                     for (const toolCall of delta?.tool_calls ?? []) {
                         const { index } = toolCall;
@@ -178,6 +190,7 @@ export class GroqProvider extends Provider {
                     model: groqConfig.model,
                     message: magmaMessage,
                     usage,
+                    stop_reason: stopReason,
                 };
 
                 return magmaCompletion;
@@ -190,11 +203,12 @@ export class GroqProvider extends Provider {
                     { signal }
                 );
 
-                const groqMessage = groqCompletion.choices[0].message;
+                const choice = groqCompletion.choices[0];
+                const groqMessage = choice?.message;
 
                 let magmaMessage: MagmaMessage;
 
-                if (groqMessage.tool_calls) {
+                if (groqMessage?.tool_calls) {
                     const groqToolCalls = groqMessage.tool_calls;
 
                     magmaMessage = {
@@ -205,7 +219,7 @@ export class GroqProvider extends Provider {
                             fn_args: JSON.parse(tool_call.function.arguments),
                         })),
                     } as MagmaToolCallMessage;
-                } else if (groqMessage.content) {
+                } else if (groqMessage?.content) {
                     magmaMessage = {
                         role: 'assistant',
                         content: groqMessage.content,
@@ -223,6 +237,7 @@ export class GroqProvider extends Provider {
                         input_tokens: groqCompletion.usage.prompt_tokens,
                         output_tokens: groqCompletion.usage.completion_tokens,
                     },
+                    stop_reason: this.convertStopReason(choice?.finish_reason),
                 };
 
                 return magmaCompletion;
@@ -347,5 +362,21 @@ export class GroqProvider extends Provider {
         }
 
         return groqMessages;
+    }
+
+    static override convertStopReason(
+        stop_reason: ChatCompletion.Choice['finish_reason']
+    ): MagmaCompletionStopReason {
+        switch (stop_reason) {
+            case 'stop':
+                return 'natural';
+            case 'tool_calls':
+            case 'function_call':
+                return 'tool_call';
+            case 'length':
+                return 'max_tokens';
+            default:
+                return 'unknown';
+        }
     }
 }

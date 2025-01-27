@@ -1,5 +1,6 @@
 import {
     Content,
+    FinishReason,
     FunctionCallingMode,
     FunctionDeclaration,
     FunctionDeclarationSchema,
@@ -12,6 +13,7 @@ import {
 import { MAX_RETRIES, Provider } from '.';
 import {
     MagmaCompletion,
+    MagmaCompletionStopReason,
     MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
@@ -56,6 +58,8 @@ export class GoogleProvider extends Provider {
 
                 let id = crypto.randomUUID();
 
+                let stopReason: MagmaCompletionStopReason = null;
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id,
@@ -73,6 +77,7 @@ export class GoogleProvider extends Provider {
                             input_tokens: null,
                             output_tokens: null,
                         },
+                        stop_reason: null,
                     };
 
                     if (chunk.usageMetadata) {
@@ -94,6 +99,15 @@ export class GoogleProvider extends Provider {
                                 arguments: toolCall.args,
                             });
                         }
+                    }
+
+                    if (chunk.candidates[0]?.finishReason) {
+                        if (streamedToolCalls.length > 0) {
+                            stopReason = 'tool_call';
+                        } else {
+                            stopReason = this.convertStopReason(chunk.candidates[0].finishReason);
+                        }
+                        magmaStreamChunk.stop_reason = stopReason;
                     }
 
                     if (contentBuffer.length > 0) {
@@ -134,7 +148,9 @@ export class GoogleProvider extends Provider {
                     model: googleConfig.model,
                     message: magmaMessage,
                     usage,
+                    stop_reason: stopReason,
                 };
+
                 return magmaCompletion;
             } else {
                 const googleCompletion = await model.generateContent(
@@ -177,6 +193,12 @@ export class GoogleProvider extends Provider {
                         input_tokens: googleCompletion.response.usageMetadata.promptTokenCount,
                         output_tokens: googleCompletion.response.usageMetadata.candidatesTokenCount,
                     },
+                    stop_reason:
+                        magmaMessage.role === 'tool_call'
+                            ? 'tool_call'
+                            : this.convertStopReason(
+                                  googleCompletion.response.candidates[0]?.finishReason
+                              ),
                 };
 
                 return magmaCompletion;
@@ -348,5 +370,21 @@ export class GoogleProvider extends Provider {
         }
 
         return googleMessages;
+    }
+
+    static override convertStopReason(stop_reason: FinishReason): MagmaCompletionStopReason {
+        switch (stop_reason) {
+            case FinishReason.RECITATION:
+            case FinishReason.STOP:
+                return 'natural';
+            case FinishReason.MAX_TOKENS:
+                return 'max_tokens';
+            case FinishReason.SAFETY:
+                return 'content_filter';
+            case FinishReason.LANGUAGE:
+                return 'unsupported';
+            default:
+                return 'unknown';
+        }
     }
 }

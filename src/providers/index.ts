@@ -1,5 +1,6 @@
 import {
     MagmaCompletion,
+    MagmaCompletionStopReason,
     MagmaConfig,
     MagmaMessage,
     MagmaProvider,
@@ -68,5 +69,10 @@ export abstract class Provider implements ProviderProps {
     static convertConfig(config: MagmaConfig): object {
         config;
         throw new Error('Provider.convertConfig not implemented');
+    }
+
+    static convertStopReason(stop_reason: string): MagmaCompletionStopReason {
+        stop_reason;
+        throw new Error('Provider.convertStopReason not implemented');
     }
 }

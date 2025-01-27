@@ -1,4 +1,12 @@
-import { MagmaHook, MagmaTool, MagmaToolParam, MagmaJob } from './types';
+import { MagmaAgent } from './agent';
+import {
+    MagmaHook,
+    MagmaTool,
+    MagmaToolParam,
+    MagmaJob,
+    MagmaMiddleware,
+    MagmaUtilities,
+} from './types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -67,110 +75,104 @@ export const cleanParam = (
     }
 };
 
+export function loadUtilities(target: any): MagmaUtilities {
+    const tools = loadTools(target);
+    const hooks = loadHooks(target);
+    const jobs = loadJobs(target);
+    const middleware = loadMiddleware(target);
+
+    return { tools, hooks, jobs, middleware };
+}
+
+export function getUtilitiesFromAgent(input: typeof MagmaAgent | MagmaAgent): MagmaUtilities[] {
+    if (input instanceof MagmaAgent) {
+        console.log('instance');
+        return input.utilities;
+    } else {
+        console.log('class');
+        const baseUtilities = [loadUtilities(input)];
+        const childUtilities = input.getUtilities();
+
+        return [...baseUtilities, ...childUtilities];
+    }
+}
+
 /**
  * Helper function to load tools from a class or instance of a class
  * @param target class or instance of a class to load tools from
  * @returns array of MagmaTool objects
  */
-export function loadTools(target: any) {
-    const isClass = /^\s*class\s+/.test(target.toString());
-    const isInstance = typeof target === 'object' && !isClass ? true : false;
-    let propertyNames = [];
-    let prototype: object = undefined;
+export function loadTools(target: any): MagmaTool[] {
+    const tools: MagmaTool[] = [];
+    const { staticMethods, instanceMethods } = getMethodsFromClassOrInstance(target);
+    const methods = [...staticMethods, ...instanceMethods];
 
-    if (isInstance) {
-        prototype = Object.getPrototypeOf(target);
-        propertyNames = Object.getOwnPropertyNames(prototype);
-    } else {
-        propertyNames = Object.getOwnPropertyNames(target);
+    for (const method of methods) {
+        if (typeof method === 'function' && '_toolInfo' in method) {
+            const params: MagmaToolParam[] = method['_parameterInfo'] ?? [];
+            tools.push({
+                target: method.bind(target),
+                name: (method['_toolInfo'] as any).name ?? method['_methodName'],
+                description: (method['_toolInfo'] as any).description ?? undefined,
+                params,
+            } as MagmaTool);
+        }
     }
 
-    const tools: MagmaTool[] = propertyNames
-        .map((fxn) => {
-            const method = isInstance ? prototype[fxn] : target[fxn];
-
-            if (
-                !(
-                    typeof method === 'function' &&
-                    ('_parameterInfo' in method || '_toolInfo' in method)
-                )
-            )
-                return null;
-
-            const params = method['_parameterInfo'] ?? ([] as MagmaToolParam[]);
-            const toolInfo = method['_toolInfo'];
-            const name = toolInfo?.name ?? method['_methodName'];
-            const description = toolInfo?.description ?? undefined;
-
-            return {
-                target: method.bind(target),
-                name,
-                description,
-                params,
-            } as MagmaTool;
-        })
-        .filter((f) => f);
-
-    return tools ?? [];
+    return tools;
 }
 
-export function loadHooks(target: any) {
-    const isClass = /^\s*class\s+/.test(target.toString());
-    const isInstance = typeof target === 'object' && !isClass ? true : false;
-    let propertyNames = [];
-    let prototype: object = undefined;
+export function loadHooks(target: any): MagmaHook[] {
+    const hooks: MagmaHook[] = [];
+    const { staticMethods, instanceMethods } = getMethodsFromClassOrInstance(target);
+    const methods = [...staticMethods, ...instanceMethods];
 
-    if (isInstance) {
-        prototype = Object.getPrototypeOf(target);
-        propertyNames = Object.getOwnPropertyNames(prototype);
-    } else {
-        propertyNames = Object.getOwnPropertyNames(target);
-    }
-
-    const hooks: MagmaHook[] = propertyNames
-        .map((fxn) => {
-            const method = isInstance ? prototype[fxn] : target[fxn];
-
-            if (!(typeof method === 'function' && '_hookName' in method)) return null;
-
-            return {
+    for (const method of methods) {
+        if (typeof method === 'function' && '_hookName' in method) {
+            hooks.push({
                 name: method['_hookName'],
                 handler: method.bind(target),
-            } as MagmaHook;
-        })
-        .filter((h) => h);
-
-    return hooks ?? [];
-}
-
-export function loadJobs(target: any) {
-    const isClass = /^\s*class\s+/.test(target.toString());
-    const isInstance = typeof target === 'object' && !isClass ? true : false;
-    let propertyNames = [];
-    let prototype: object = undefined;
-
-    if (isInstance) {
-        prototype = Object.getPrototypeOf(target);
-        propertyNames = Object.getOwnPropertyNames(prototype);
-    } else {
-        propertyNames = Object.getOwnPropertyNames(target);
+            } as MagmaHook);
+        }
     }
 
-    const jobs: MagmaJob[] = propertyNames
-        .map((fxn) => {
-            const method = isInstance ? prototype[fxn] : target[fxn];
+    return hooks;
+}
 
-            if (!(typeof method === 'function' && '_schedule' in method)) return null;
+export function loadJobs(target: any): MagmaJob[] {
+    const jobs: MagmaJob[] = [];
+    const { staticMethods, instanceMethods } = getMethodsFromClassOrInstance(target);
+    const methods = [...staticMethods, ...instanceMethods];
 
-            return {
+    for (const method of methods) {
+        if (typeof method === 'function' && '_schedule' in method) {
+            jobs.push({
                 handler: method.bind(target),
                 schedule: method['_schedule'],
                 options: method['_options'],
-            } as MagmaJob;
-        })
-        .filter((j) => j);
+            } as MagmaJob);
+        }
+    }
 
-    return jobs ?? [];
+    return jobs;
+}
+
+export function loadMiddleware(target: any): MagmaMiddleware[] {
+    const middleware: MagmaMiddleware[] = [];
+
+    const { staticMethods, instanceMethods } = getMethodsFromClassOrInstance(target);
+    const methods = [...staticMethods, ...instanceMethods];
+
+    for (const method of methods) {
+        if (typeof method === 'function' && '_middlewareTrigger' in method) {
+            middleware.push({
+                trigger: method['_middlewareTrigger'],
+                action: method.bind(target),
+            } as MagmaMiddleware);
+        }
+    }
+
+    return middleware;
 }
 
 export function mapNumberInRange(
@@ -181,6 +183,30 @@ export function mapNumberInRange(
     newMax: number
 ): number {
     return ((n - min) * (newMax - newMin)) / (max - min) + newMin;
+}
+
+function getMethodsFromClassOrInstance(target: any): {
+    staticMethods: Function[];
+    instanceMethods: Function[];
+} {
+    const isClass = /^\s*class\s+/.test(target.toString());
+    const isInstance = typeof target === 'object' && !isClass ? true : false;
+    const staticMethods: Function[] = [];
+    const instanceMethods: Function[] = [];
+
+    if (isInstance) {
+        const prototype = Object.getPrototypeOf(target);
+        const instancePropertyNames = Object.getOwnPropertyNames(prototype);
+        const constructor = prototype.constructor;
+        const staticPropertyNames = Object.getOwnPropertyNames(constructor);
+        staticMethods.push(...staticPropertyNames.map((name) => constructor[name]));
+        instanceMethods.push(...instancePropertyNames.map((name) => prototype[name]));
+    } else {
+        const staticPropertyNames = Object.getOwnPropertyNames(target);
+        staticMethods.push(...staticPropertyNames.map((name) => target[name]));
+    }
+
+    return { staticMethods, instanceMethods };
 }
 
 export async function sleep(ms: number): Promise<void> {
@@ -196,15 +222,4 @@ export const hash = (str: string) => {
         hash |= 0;
     }
     return hash;
-};
-
-export const isInstanceOf = (obj: any, type: any): boolean => {
-    if (!obj || !obj.constructor || !type) return false;
-
-    // Iterate through properties of obj's constructor and check if they exist in the type
-    for (const property in obj.constructor) {
-        if (!type[property]) return false;
-    }
-
-    return true;
 };

@@ -11,28 +11,22 @@ import {
     MagmaMiddlewareTriggerType,
     MagmaState,
     MagmaStreamChunk,
-    MagmaFlowMessage,
-    MagmaFlowConfig,
-    TTSConfig,
-    STTConfig,
     MagmaToolResultMessage,
     MagmaToolResult,
     MagmaMiddlewareReturnType,
+    MagmaUtilities,
+    MagmaHook,
+    MagmaJob,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash, loadTools } from './helpers';
+import { hash, loadUtilities } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
-import { WebSocket } from 'ws';
-import { MagmaHook } from './types/hooks';
-import { MagmaJob } from './types/jobs';
 import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
-const kMagmaFlowMainTimeout = 15000;
-const kMagmaFlowEndpoint = 'api.magmaflow.dev';
 
 /**
  * provider: 'openai' | 'anthropic' | 'groq' (optional)(default openai)
@@ -48,11 +42,6 @@ type AgentProps = {
     agentId?: string;
     providerConfig?: MagmaProviderConfig;
     apiKey?: string;
-    fetchSystemPrompts?: () => MagmaSystemMessage[];
-    fetchTools?: () => MagmaTool[];
-    fetchMiddleware?: () => MagmaMiddleware[];
-    onError?: (error: Error) => Promise<void>;
-    onUsageUpdate?: (usage: object) => Promise<void>;
     logger?: MagmaLogger;
     messageContext?: number;
 };
@@ -67,32 +56,12 @@ export class MagmaAgent {
     private messages: MagmaMessage[];
     private middlewareRetries: Record<number, number>;
     private messageContext: number;
-    private defaultTools: MagmaTool[] = [];
-    private defaultMiddleware: MagmaMiddleware[] = [];
     private abortController: AbortController | null = null;
-    private ttsConfig: TTSConfig = undefined;
-    private sttConfig: STTConfig = undefined;
-
-    // Magma Flow
-    private magmaFlowSocket?: WebSocket;
-    private apiKey?: string;
-    private connected: boolean = false;
-    private queue: Promise<void>[] = [];
-    // Used to track the number of tools sent to Magma Flow, so we can update the list of tools on the fly
-    private lastToolHash: number = 0;
-    // Same as above, but for system prompts
-    private lastSystemPromptHash: number = 0;
 
     constructor(args?: AgentProps) {
         args ??= {};
 
-        if (args.apiKey && args.apiKey.startsWith('mf_')) {
-            this.apiKey = args.apiKey;
-            this.connectToMagmaFlow();
-        }
-
         // Set the provider config
-        // Even if we're using Magma Flow, we still need a provider config to send in config
         const providerConfig: MagmaProviderConfig = args.providerConfig ?? {
             provider: 'openai',
             model: 'gpt-4o',
@@ -102,26 +71,6 @@ export class MagmaAgent {
 
         this.messageContext = args?.messageContext ?? 20;
 
-        if (args.fetchSystemPrompts) {
-            this.fetchSystemPrompts = args.fetchSystemPrompts;
-        }
-
-        if (args.fetchTools) {
-            this.fetchTools = args.fetchTools;
-        }
-
-        if (args.fetchMiddleware) {
-            this.fetchMiddleware = args.fetchMiddleware;
-        }
-
-        if (args.onError) {
-            this.onError = args.onError;
-        }
-
-        if (args.onUsageUpdate) {
-            this.onUsageUpdate = args.onUsageUpdate;
-        }
-
         this.agentId = args.agentId;
         this.logger = args.logger;
 
@@ -129,9 +78,6 @@ export class MagmaAgent {
         this.messages = [];
         this.retryCount = 0;
         this.middlewareRetries = {};
-
-        this.loadDefaultTools();
-        this.loadDefaultMiddleware();
 
         this.logger?.debug('Agent initialized');
     }
@@ -159,14 +105,7 @@ export class MagmaAgent {
     }
 
     private async _cleanup(): Promise<void> {
-        this.lastToolHash = 0;
-        this.lastSystemPromptHash = 0;
         this.abortController = null;
-
-        // Disconnect from MagmaFlow and event emitters
-        if (this.magmaFlowSocket?.readyState === WebSocket.OPEN) {
-            this.magmaFlowSocket?.close(1000, 'Agent cleanup');
-        }
 
         this.messages = [];
 
@@ -195,7 +134,7 @@ export class MagmaAgent {
 
         const provider = Provider.factory(this.providerName);
 
-        const messages = [...this.fetchSystemPrompts(), ...this.getMessages(this.messageContext)];
+        const messages = [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)];
         if (messages.length > 0 && messages.at(-1).role === 'tool_call') {
             messages.pop();
         }
@@ -329,99 +268,35 @@ export class MagmaAgent {
 
             let message: MagmaMessage;
 
-            if (this.connected && this.magmaFlowSocket?.readyState === WebSocket.OPEN) {
-                const lastMessage = this.messages.at(-1);
+            const provider = Provider.factory(this.providerName);
 
-                const configUpdates: Partial<MagmaFlowConfig> = {};
-                if (this.lastToolHash !== hash(JSON.stringify(this.tools))) {
-                    this.lastToolHash = hash(JSON.stringify(this.tools));
-                    configUpdates.tools = this.tools;
-                }
+            const tools = this.tools;
 
-                if (this.lastSystemPromptHash !== hash(JSON.stringify(this.fetchSystemPrompts()))) {
-                    this.lastSystemPromptHash = hash(JSON.stringify(this.fetchSystemPrompts()));
-                    configUpdates.system_prompts = this.fetchSystemPrompts();
-                }
+            const completionConfig: MagmaConfig = {
+                ...config,
+                providerConfig: this.providerConfig,
+                messages: [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)],
+                temperature: 0,
+                stream: this.stream,
+            };
 
-                if (Object.keys(configUpdates).length > 0) {
-                    this.sendToMagmaFlow({ type: 'config', data: configUpdates });
-                }
+            if (tools.length > 0) completionConfig.tools = tools;
 
-                try {
-                    this.sendToMagmaFlow({ type: 'message', data: lastMessage });
+            // Create a new AbortController for this request
+            this.abortController = new AbortController();
 
-                    // Construct a promise that will resolve when a message is received from Magma Flow
-                    // Times out after kMagmaFlowMainTimeout milliseconds
-                    const serverAgentPromise = new Promise<MagmaMessage>((resolve, reject) => {
-                        // Set timeout to reject promise
-                        const timeout = setTimeout(() => {
-                            cleanup();
-                            reject(new Error('Timeout waiting for agent reply'));
-                        }, kMagmaFlowMainTimeout);
+            const completion = await provider.makeCompletionRequest(
+                completionConfig,
+                this.onStreamChunk.bind(this),
+                0,
+                this.abortController?.signal
+            );
 
-                        // Handle incoming messages from Magma Flow
-                        const messageHandler = (message: MessageEvent) => {
-                            try {
-                                const data = JSON.parse(message.toString()) as MagmaFlowMessage;
-                                if (data.type === 'message' && data.data.role === 'assistant') {
-                                    cleanup();
-                                    resolve(data.data);
-                                }
-                            } catch (error) {
-                                cleanup();
-                                reject(error);
-                            }
-                        };
+            this.onUsageUpdate(completion.usage);
 
-                        // Cleanup function to clear the timeout and remove the message handler
-                        const cleanup = () => {
-                            clearTimeout(timeout);
-                            this.magmaFlowSocket?.removeListener('message', messageHandler);
-                        };
+            message = completion.message;
 
-                        // Add the message handler
-                        this.magmaFlowSocket.on('message', messageHandler);
-                    });
-
-                    message = await serverAgentPromise;
-                } catch (error) {
-                    await this.onError(error);
-                    throw error;
-                }
-            } else {
-                const provider = Provider.factory(this.providerName);
-
-                const tools = this.tools;
-
-                const completionConfig: MagmaConfig = {
-                    ...config,
-                    providerConfig: this.providerConfig,
-                    messages: [
-                        ...this.fetchSystemPrompts(),
-                        ...this.getMessages(this.messageContext),
-                    ],
-                    temperature: 0,
-                    stream: this.stream,
-                };
-
-                if (tools.length > 0) completionConfig.tools = tools;
-
-                // Create a new AbortController for this request
-                this.abortController = new AbortController();
-
-                const completion = await provider.makeCompletionRequest(
-                    completionConfig,
-                    this.onStreamChunk.bind(this),
-                    0,
-                    this.abortController?.signal
-                );
-
-                this.onUsageUpdate(completion.usage);
-
-                message = completion.message;
-
-                this.messages.push(message);
-            }
+            this.messages.push(message);
 
             if (message.role === 'tool_call') {
                 // This array will identify tool calls that throw errors in preToolExecution middleware
@@ -542,22 +417,6 @@ export class MagmaAgent {
     }
 
     /**
-     * Set the TTS (Text-to-Speech) configuration for the agent
-     * @param ttsConfig TTS configuration
-     */
-    public setTTSConfig(ttsConfig: Partial<TTSConfig>): void {
-        this.ttsConfig = { ...this.ttsConfig, ...ttsConfig };
-    }
-
-    /**
-     * Set the STT (Speech-to-Text) configuration for the agent
-     * @param sttConfig STT configuration
-     */
-    public setSTTConfig(sttConfig: Partial<STTConfig>): void {
-        this.sttConfig = { ...this.sttConfig, ...sttConfig };
-    }
-
-    /**
      * Store a message in the agent context
      *
      * @param content content of the message to store
@@ -629,23 +488,6 @@ export class MagmaAgent {
         }
     }
 
-    public abort(): void {
-        this.sendToMagmaFlow({ type: 'abort', data: null });
-    }
-
-    public commit(): void {
-        this.sendToMagmaFlow({ type: 'audio.commit', data: null });
-    }
-
-    /**
-     * Send an audio chunk to Magma Flow
-     * @param chunk audio chunk to send (either a Buffer or a base64 encoded string)
-     */
-    public audio(chunk: Buffer | string): void {
-        const data = typeof chunk === 'string' ? chunk : chunk.toString('base64');
-        this.sendToMagmaFlow({ type: 'audio.chunk', data });
-    }
-
     /**
      * Return whether the agent is currently processing a request
      */
@@ -653,221 +495,14 @@ export class MagmaAgent {
         return !!this.abortController;
     }
 
-    /* PRIVATE METHODS */
-
-    /**
-     * Connect to Magma Flow
-     */
-    private connectToMagmaFlow(): void {
-        if (this.magmaFlowSocket?.readyState === WebSocket.OPEN || !this.apiKey) return;
-
-        this.magmaFlowSocket = new WebSocket(
-            `wss://${kMagmaFlowEndpoint}?apiKey=${this.apiKey}&clientType=sdk`
-        );
-
-        this.magmaFlowSocket.on('open', () => {
-            this.connected = true;
-            this.onConnect();
-            this.logger?.debug('Connected to Magma Flow');
-
-            // Scrape agent to create config
-            const config = {
-                agent_id: this.agentId,
-                tts: this.ttsConfig,
-                stt: this.sttConfig,
-                provider: this.providerName,
-                model: this.providerConfig.model,
-                system_prompts: this.fetchSystemPrompts(),
-                tools: this.tools.map((t) => ({
-                    name: t.name,
-                    description: t.description,
-                    params: t.params,
-                })),
-            } as MagmaFlowConfig;
-
-            this.sendToMagmaFlow({ type: 'config', data: config });
-        });
-
-        this.magmaFlowSocket.on('error', (error) => {
-            this.logger?.error(`Magma Flow Error - ${error?.message ?? 'Unknown'}`);
-            this.onError(error);
-        });
-
-        this.magmaFlowSocket.on('close', (code) => {
-            this.connected = false;
-            this.logger?.debug('Disconnected from Magma Flow');
-            this.onDisconnect();
-
-            // If the connection was not closed cleanly, we should try to reconnect
-            if (code === 1000) {
-                this.magmaFlowSocket = null;
-            } else {
-                setTimeout(() => {
-                    this.connectToMagmaFlow();
-                }, 1000);
-            }
-        });
-
-        this.magmaFlowSocket.on('message', this.handleMagmaFlowMessage.bind(this));
-    }
-
-    /**
-     * Handle a message from Magma Flow
-     * @param message message from Magma Flow
-     */
-    private async handleMagmaFlowMessage(message: MessageEvent): Promise<void> {
-        try {
-            const data = JSON.parse(message.toString()) as MagmaFlowMessage;
-
-            switch (data.type) {
-                case 'error':
-                    this.onError(data.data);
-                    break;
-                case 'audio.chunk': {
-                    const buffer = Buffer.from(data.data, 'base64');
-                    this.onAudioChunk(buffer);
-                    break;
-                }
-                case 'audio.commit':
-                    this.onAudioCommit();
-                    break;
-                case 'abort':
-                    this.onAbort();
-                    break;
-                case 'stream.chunk':
-                    this.onStreamChunk(data.data);
-                    break;
-                case 'usage':
-                    this.onUsageUpdate(data.data);
-                    break;
-                case 'message':
-                    if (data.data.role === 'tool_call') {
-                        const toolCallMessage = data.data as MagmaToolCallMessage;
-                        const toolResultMessage = await this.executeTools(toolCallMessage);
-
-                        this.sendToMagmaFlow({ type: 'message', data: toolResultMessage });
-                    } else {
-                        // Used to make sure local context is in sync with Magma Flow's agent
-                        this.addMessage(data.data as MagmaMessage);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        } catch (error) {
-            this.logger?.error(`Magma Flow Message Error - ${error?.message ?? 'Unknown'}`);
-            this.onError(error);
-        }
-    }
-
-    /**
-     * Send a message to Magma Flow
-     * @param message message to send
-     */
-    private sendToMagmaFlow(message: MagmaFlowMessage): void {
-        if (!this.magmaFlowSocket || this.magmaFlowSocket.readyState !== WebSocket.OPEN) return;
-
-        this.magmaFlowSocket.send(JSON.stringify(message));
-    }
-
-    private loadDefaultTools(): void {
-        try {
-            this.defaultTools = loadTools(this);
-
-            this.defaultTools.length > 0 &&
-                this.logger?.info(`Loaded ${this.defaultTools.length} default tools`);
-        } catch (error) {
-            this.logger?.debug(`Failed to load default tools - ${error.message ?? 'Unknown'}`);
-        }
-    }
-
-    private loadDefaultMiddleware(): void {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const middleware: MagmaMiddleware[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_middlewareTrigger' in method))
-                        return null;
-
-                    const trigger = method['_middlewareTrigger'] as MagmaMiddlewareTriggerType;
-
-                    return {
-                        action: method.bind(this),
-                        trigger,
-                    } as MagmaMiddleware;
-                })
-                .filter((f) => f);
-
-            this.logger?.info(`Loaded ${middleware.length} default middleware`);
-
-            this.defaultMiddleware = middleware ?? [];
-        } catch (error) {
-            this.logger?.debug(`Failed to load default middleware - ${error.message ?? 'Unknown'}`);
-        }
-    }
-
-    private loadHooks(): MagmaHook[] {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const hooks: MagmaHook[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_hookName' in method)) return null;
-
-                    return {
-                        name: method['_hookName'],
-                        handler: method.bind(this),
-                    } as MagmaHook;
-                })
-                .filter((h) => h);
-
-            return hooks;
-        } catch (error) {
-            this.logger?.debug(`Failed to load hooks - ${error.message ?? 'Unknown'}`);
-        }
-
-        return [];
-    }
-
-    private loadJobs(): MagmaJob[] {
-        try {
-            const prototype = Object.getPrototypeOf(this);
-            const propertyNames = Object.getOwnPropertyNames(prototype);
-
-            const jobs: MagmaJob[] = propertyNames
-                .map((fxn) => {
-                    const method = prototype[fxn];
-
-                    if (!(typeof method === 'function' && '_schedule' in method)) return null;
-
-                    return {
-                        handler: method.bind(this),
-                        schedule: method['_schedule'],
-                        options: method['_options'],
-                    } as MagmaJob;
-                })
-                .filter((j) => j);
-
-            return jobs;
-        } catch (error) {
-            this.logger?.debug(`Failed to load jobs - ${error.message ?? 'Unknown'}`);
-        }
-
-        return [];
-    }
-
     public scheduleJobs({ verbose = false }: { verbose?: boolean } = {}): void {
-        const jobs = this.loadJobs();
+        const jobs = this.jobs;
 
         for (const job of jobs) {
-            if (verbose) console.log(`Scheduling job with ${job.schedule}`);
+            if (verbose)
+                this.logger?.info(
+                    `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
+                );
             cron.schedule(job.schedule, job.handler.bind(this), job.options);
         }
     }
@@ -905,11 +540,6 @@ export class MagmaAgent {
                     );
                 }
 
-                // If we're connected to Magma Flow, we can return the result directly which will be passed back to the server
-                // if (this.connected) {
-                //     return result;
-                // }
-
                 toolResult = {
                     id: toolCall.id,
                     result: result,
@@ -928,10 +558,6 @@ export class MagmaAgent {
                     error: true,
                     fn_name: toolCall.fn_name,
                 };
-
-                // if (this.connected) {
-                //     return errorMessage;
-                // }
             } finally {
                 toolResultMessage.tool_results.push(toolResult);
             }
@@ -1033,29 +659,39 @@ export class MagmaAgent {
 
     /* GETTERS */
 
+    public get utilities(): MagmaUtilities[] {
+        const baseUtilities = [loadUtilities(this)];
+        // Get the constructor of the current instance
+        const currentConstructor = Object.getPrototypeOf(this).constructor;
+        // Get utilities from the current class
+        const childUtilities = currentConstructor.getUtilities();
+
+        return [...baseUtilities, ...childUtilities];
+    }
+
+    public static getUtilities(): MagmaUtilities[] {
+        return [];
+    }
+
     private get tools(): MagmaTool[] {
-        return [...this.defaultTools, ...this.fetchTools()];
+        return this.utilities.flatMap((u) => u.tools);
     }
 
     private get middleware(): MagmaMiddleware[] {
-        return [...this.defaultMiddleware, ...this.fetchMiddleware()];
+        return this.utilities.flatMap((u) => u.middleware);
     }
 
     private get hooks(): MagmaHook[] {
-        return this.loadHooks();
+        return this.utilities.flatMap((u) => u.hooks);
+    }
+
+    private get jobs(): MagmaJob[] {
+        return this.utilities.flatMap((u) => u.jobs);
     }
 
     /* EVENT HANDLERS */
 
-    fetchTools(): MagmaTool[] {
-        return [];
-    }
-
-    fetchMiddleware(): MagmaMiddleware[] {
-        return [];
-    }
-
-    fetchSystemPrompts(): MagmaSystemMessage[] {
+    getSystemPrompts(): MagmaSystemMessage[] {
         return [];
     }
 

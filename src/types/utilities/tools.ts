@@ -1,5 +1,5 @@
-import { MagmaState } from './index';
-import { MagmaToolCall } from './messages';
+import { MagmaState } from '../index';
+import { MagmaToolCall } from '../messages';
 
 export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
 

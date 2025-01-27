@@ -209,6 +209,8 @@ export class MagmaAgent {
         // Reset the rejectedToolCallIds array
         rejectedToolCallIds = [];
 
+        this.messages.push(toolResultMessage);
+
         // Run the 'onToolExecution' middleware
         middlewareError = await this.runMiddleware('onToolExecution', toolResultMessage);
 
@@ -224,8 +226,6 @@ export class MagmaAgent {
             // Recombine with the tool results that threw errors in onToolExecution middleware, if any
             toolResultMessage.tool_results.push(...middlewareError.tool_results);
         }
-
-        this.messages.push(toolResultMessage);
 
         return await this.main();
     }
@@ -326,6 +326,8 @@ export class MagmaAgent {
                     toolResultMessage.tool_results.push(...middlewareError.tool_results);
                 }
 
+                this.messages.push(toolResultMessage);
+
                 // Run the 'onToolExecution' middleware
                 middlewareError = await this.runMiddleware('onToolExecution', toolResultMessage);
 
@@ -343,9 +345,6 @@ export class MagmaAgent {
                         toolResultMessage.tool_results.push(...middlewareError.tool_results);
                     }
                 }
-
-                // Add the combined tool results to the messages array
-                this.messages.push(toolResultMessage);
 
                 // Trigger another completion because last message was a tool call
                 return await this.main();

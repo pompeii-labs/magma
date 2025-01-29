@@ -86,10 +86,8 @@ export function loadUtilities(target: any): MagmaUtilities {
 
 export function getUtilitiesFromAgent(input: typeof MagmaAgent | MagmaAgent): MagmaUtilities[] {
     if (input instanceof MagmaAgent) {
-        console.log('instance');
         return input.utilities;
     } else {
-        console.log('class');
         const baseUtilities = [loadUtilities(input)];
         const childUtilities = input.getUtilities();
 

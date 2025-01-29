@@ -673,19 +673,19 @@ export class MagmaAgent {
     }
 
     private get tools(): MagmaTool[] {
-        return this.utilities.flatMap((u) => u.tools);
+        return this.utilities.flatMap((u) => u.tools.filter(Boolean));
     }
 
     private get middleware(): MagmaMiddleware[] {
-        return this.utilities.flatMap((u) => u.middleware);
+        return this.utilities.flatMap((u) => u.middleware.filter(Boolean));
     }
 
     private get hooks(): MagmaHook[] {
-        return this.utilities.flatMap((u) => u.hooks);
+        return this.utilities.flatMap((u) => u.hooks.filter(Boolean));
     }
 
     private get jobs(): MagmaJob[] {
-        return this.utilities.flatMap((u) => u.jobs);
+        return this.utilities.flatMap((u) => u.jobs.filter(Boolean));
     }
 
     /* EVENT HANDLERS */

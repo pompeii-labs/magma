@@ -130,6 +130,7 @@ export function loadHooks(target: any): MagmaHook[] {
             hooks.push({
                 name: method['_hookName'],
                 handler: method.bind(target),
+                agentIdPath: method['_agentIdPath'],
             } as MagmaHook);
         }
     }

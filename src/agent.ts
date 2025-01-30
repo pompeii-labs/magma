@@ -39,7 +39,7 @@ const kMiddlewareMaxRetries = 5;
  * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
  */
 type AgentProps = {
-    agentId?: string;
+    id?: string;
     providerConfig?: MagmaProviderConfig;
     apiKey?: string;
     logger?: MagmaLogger;
@@ -47,7 +47,7 @@ type AgentProps = {
 };
 
 export class MagmaAgent {
-    agentId?: string;
+    id?: string;
     logger?: MagmaLogger;
     state: MagmaState;
     stream: boolean = false;
@@ -71,7 +71,7 @@ export class MagmaAgent {
 
         this.messageContext = args?.messageContext ?? 20;
 
-        this.agentId = args.agentId;
+        this.id = args.id;
         this.logger = args.logger;
 
         this.state = new Map();
@@ -672,19 +672,19 @@ export class MagmaAgent {
         return [];
     }
 
-    private get tools(): MagmaTool[] {
+    public get tools(): MagmaTool[] {
         return this.utilities.flatMap((u) => u.tools.filter(Boolean));
     }
 
-    private get middleware(): MagmaMiddleware[] {
+    public get middleware(): MagmaMiddleware[] {
         return this.utilities.flatMap((u) => u.middleware.filter(Boolean));
     }
 
-    private get hooks(): MagmaHook[] {
+    public get hooks(): MagmaHook[] {
         return this.utilities.flatMap((u) => u.hooks.filter(Boolean));
     }
 
-    private get jobs(): MagmaJob[] {
+    public get jobs(): MagmaJob[] {
         return this.utilities.flatMap((u) => u.jobs.filter(Boolean));
     }
 

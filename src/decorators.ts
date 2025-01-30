@@ -1,4 +1,10 @@
-import { MagmaToolParam, MagmaMiddlewareTriggerType, MagmaMiddlewareTriggers } from './types';
+import {
+    MagmaToolParam,
+    MagmaMiddlewareTriggerType,
+    MagmaMiddlewareTriggers,
+    HookRequestPath,
+    HookRequestLocation,
+} from './types';
 import { validate } from 'node-cron';
 
 /**
@@ -56,9 +62,10 @@ export function middleware(trigger: MagmaMiddlewareTriggerType) {
  * @param hookName name of the hook
  * ex: @hook('notification') -> POST /hooks/notification
  */
-export function hook(hookName: string) {
+export function hook(hookName: string, agentIdPath?: HookRequestPath<HookRequestLocation>) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._hookName = hookName;
+        descriptor.value._agentIdPath = agentIdPath;
     };
 }
 

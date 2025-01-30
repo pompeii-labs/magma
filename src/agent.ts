@@ -659,10 +659,11 @@ export class MagmaAgent {
     /* GETTERS */
 
     public get utilities(): MagmaUtilities[] {
+        // Get the utilities from the current instance
         const baseUtilities = [loadUtilities(this)];
         // Get the constructor of the current instance
         const currentConstructor = Object.getPrototypeOf(this).constructor;
-        // Get utilities from the current class
+        // Get the static utilities from the current class
         const childUtilities = currentConstructor.getUtilities();
 
         return [...baseUtilities, ...childUtilities];

@@ -27,6 +27,6 @@ export const HookRequest = {
 
 export type MagmaHook = {
     name: string;
-    handler: (payload: any) => Promise<void>;
+    handler: (request: any, response: any) => Promise<void>;
     agentIdPath?: HookRequestPath<HookRequestLocation>;
 };

@@ -28,20 +28,8 @@ import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
 
-/**
- * provider: 'openai' | 'anthropic' | 'groq' (optional)(default openai)
- * model: any supported model of the associated provider (optional)(default gpt-4o)
- * fetchSystemPrompts: method to retrieve system prompts whenever a completion is generated
- * fetchTools: fetch user-defined tools to make available in context (optional)
- * fetchMiddleware: fetch user-defined middleware actions to perform at various steps in `main()` (optional)
- * onUpdateFunctions: helper functions to receive more granular data throughout the agent main flow (optional)
- * logger: any logger conforming the MagmaLogger type (optional)
- * messageContext: how much conversation history to include in each completion. A value of -1 indicates no limit (optional)(default 20)
- */
 type AgentProps = {
-    id?: string;
     providerConfig?: MagmaProviderConfig;
-    apiKey?: string;
     logger?: MagmaLogger;
     messageContext?: number;
 };
@@ -71,7 +59,6 @@ export class MagmaAgent {
 
         this.messageContext = args?.messageContext ?? 20;
 
-        this.id = args.id;
         this.logger = args.logger;
 
         this.state = new Map();
@@ -86,7 +73,7 @@ export class MagmaAgent {
         return this.providerConfig.provider;
     }
 
-    public async setup?(opts?: object): Promise<MagmaAssistantMessage | void> {}
+    public async setup?(opts?: object): Promise<void> {}
 
     /**
      * Optional method to receive input from the user

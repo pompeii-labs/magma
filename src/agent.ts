@@ -1,6 +1,5 @@
 import {
     MagmaAssistantMessage,
-    MagmaConfig,
     MagmaMessage,
     MagmaProvider,
     MagmaProviderConfig,
@@ -17,6 +16,7 @@ import {
     MagmaUtilities,
     MagmaHook,
     MagmaJob,
+    MagmaCompletionConfig,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
@@ -28,10 +28,10 @@ import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
 
-type AgentProps = {
-    providerConfig?: MagmaProviderConfig;
+type AgentProps = MagmaProviderConfig & {
     logger?: MagmaLogger;
     messageContext?: number;
+    stream?: boolean;
 };
 
 export class MagmaAgent {
@@ -47,19 +47,22 @@ export class MagmaAgent {
     private abortController: AbortController | null = null;
 
     constructor(args?: AgentProps) {
-        args ??= {};
+        this.messageContext = args?.messageContext ?? 20;
+        this.logger = args?.logger;
+        this.stream = args?.stream ?? false;
 
-        // Set the provider config
-        const providerConfig: MagmaProviderConfig = args.providerConfig ?? {
-            provider: 'openai',
-            model: 'gpt-4o',
+        args ??= {
+            provider: 'anthropic',
+            model: 'claude-3-5-sonnet-latest',
         };
 
+        const providerConfig = {
+            provider: args.provider,
+            model: args.model,
+            settings: args.settings,
+        } as MagmaProviderConfig;
+
         this.setProviderConfig(providerConfig);
-
-        this.messageContext = args?.messageContext ?? 20;
-
-        this.logger = args.logger;
 
         this.state = new Map();
         this.messages = [];
@@ -111,19 +114,28 @@ export class MagmaAgent {
      * @param args.name The name of the tool to run
      * @param args.tool The Magma tool to run
      * Either `name` or `tool` must be provided. Tool will be prioritized if both are provided.
-     * @param args.inConversation Whether the tool call should be added to the conversation history (default: false)
+     * @param args.addToConversation Whether the tool call should be added to the conversation history (default: false)
      * @throws if no tool matching tool is found
      */
-    public async trigger(args: {
-        name?: string;
-        tool?: MagmaTool;
-        inConversation?: boolean;
-    }): Promise<MagmaAssistantMessage | MagmaToolResult> {
+    public async trigger(
+        args: {
+            name?: string;
+            tool?: MagmaTool;
+            addToConversation?: boolean;
+        },
+        config?: MagmaProviderConfig
+    ): Promise<MagmaAssistantMessage | MagmaToolResult> {
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
 
-        args.inConversation ??= false;
+        args.addToConversation ??= false;
+
+        const startingProviderConfig = this.providerConfig;
+
+        if (config?.['provider']) {
+            this.setProviderConfig(config);
+        }
 
         const provider = Provider.factory(this.providerName);
 
@@ -132,10 +144,9 @@ export class MagmaAgent {
             messages.pop();
         }
 
-        const completionConfig: MagmaConfig = {
+        const completionConfig: MagmaCompletionConfig = {
             providerConfig: this.providerConfig,
             messages,
-            temperature: 0,
             tools: [tool],
             tool_choice: tool.name,
             stream: this.stream,
@@ -151,6 +162,8 @@ export class MagmaAgent {
             this.abortController?.signal
         );
 
+        this.setProviderConfig(startingProviderConfig);
+
         this.onUsageUpdate(completion.usage);
 
         const call = completion.message as MagmaToolCallMessage;
@@ -158,7 +171,7 @@ export class MagmaAgent {
         let middlewareError = await this.runMiddleware('preToolExecution', call);
 
         // If the tool call is not `inConversation`, we just return the result
-        if (!args.inConversation) {
+        if (!args.addToConversation) {
             if (middlewareError) {
                 return middlewareError.tool_results[0];
             }
@@ -220,7 +233,7 @@ export class MagmaAgent {
             toolResultMessage.tool_results.push(...middlewareError.tool_results);
         }
 
-        return await this.main();
+        return await this.main(config);
     }
 
     /**
@@ -240,7 +253,7 @@ export class MagmaAgent {
      *
      * @throws Will rethrow the error if no `onError` handler is defined
      */
-    public async main(config?: MagmaConfig): Promise<MagmaAssistantMessage> {
+    public async main(config?: MagmaProviderConfig): Promise<MagmaAssistantMessage> {
         try {
             // Call 'preCompletion' middleware
             if (this.messages.at(-1)?.role === 'user') {
@@ -261,19 +274,20 @@ export class MagmaAgent {
 
             let message: MagmaMessage;
 
+            const startingProviderConfig = this.providerConfig;
+
+            if (config?.['provider']) {
+                this.setProviderConfig(config);
+            }
+
             const provider = Provider.factory(this.providerName);
 
-            const tools = this.tools;
-
-            const completionConfig: MagmaConfig = {
-                ...config,
+            const completionConfig: MagmaCompletionConfig = {
                 providerConfig: this.providerConfig,
                 messages: [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)],
-                temperature: 0,
                 stream: this.stream,
+                tools: this.tools,
             };
-
-            if (tools.length > 0) completionConfig.tools = tools;
 
             // Create a new AbortController for this request
             this.abortController = new AbortController();
@@ -284,6 +298,8 @@ export class MagmaAgent {
                 0,
                 this.abortController?.signal
             );
+
+            this.setProviderConfig(startingProviderConfig);
 
             this.onUsageUpdate(completion.usage);
 
@@ -340,7 +356,7 @@ export class MagmaAgent {
                 }
 
                 // Trigger another completion because last message was a tool call
-                return await this.main();
+                return await this.main(config);
             } else {
                 const middlewareError = await this.runMiddleware('onCompletion', message);
 
@@ -524,12 +540,6 @@ export class MagmaAgent {
                     if (this.retryCount >= 3) throw new Error('Tool execution not handled');
 
                     this.retryCount++;
-                }
-
-                if (typeof result !== 'string') {
-                    throw new Error(
-                        `Tool ${toolCall.fn_name}() did not return a string, instead returned ${typeof result}`
-                    );
                 }
 
                 toolResult = {

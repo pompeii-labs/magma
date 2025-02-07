@@ -3,21 +3,22 @@ import { MAX_RETRIES, Provider } from '.';
 import {
     MagmaAssistantMessage,
     MagmaCompletion,
+    MagmaCompletionConfig,
     MagmaCompletionStopReason,
-    MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
     MagmaTool,
     MagmaToolCallMessage,
     MagmaToolParam,
     MagmaUsage,
+    OpenAIProviderConfig,
 } from '../types';
 import { Logger } from '../logger';
 import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
 } from 'openai/resources/index';
-import { cleanParam, mapNumberInRange, sleep } from '../helpers';
+import { cleanParam, sleep } from '../helpers';
 import {
     ChatCompletion,
     ChatCompletionChunk,
@@ -26,7 +27,7 @@ import {
 
 export class OpenAIProvider extends Provider {
     static override async makeCompletionRequest(
-        config: MagmaConfig,
+        config: MagmaCompletionConfig,
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
@@ -234,7 +235,8 @@ export class OpenAIProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): OpenAITool[] {
+    static override convertTools(tools: MagmaTool[]): OpenAITool[] | undefined {
+        if (tools.length === 0) return undefined;
         const openAITools: OpenAITool[] = [];
 
         for (const tool of tools) {
@@ -257,11 +259,7 @@ export class OpenAIProvider extends Provider {
     }
 
     // MagmaConfig to Provider-specific config converter
-    static override convertConfig(config: MagmaConfig): ChatCompletionCreateParamsBase {
-        const tools: OpenAITool[] | undefined = config.tools
-            ? this.convertTools(config.tools)
-            : undefined;
-
+    static override convertConfig(config: MagmaCompletionConfig): ChatCompletionCreateParamsBase {
         let tool_choice = undefined;
 
         if (config.tool_choice === 'auto') tool_choice = 'auto';
@@ -269,7 +267,7 @@ export class OpenAIProvider extends Provider {
         else if (typeof config.tool_choice === 'string')
             tool_choice = { type: 'function', function: { name: config.tool_choice } };
 
-        const model = config.providerConfig.model;
+        const { model, settings } = config.providerConfig as OpenAIProviderConfig;
 
         delete config.providerConfig;
 
@@ -277,12 +275,9 @@ export class OpenAIProvider extends Provider {
             ...config,
             model,
             messages: this.convertMessages(config.messages),
-            tools,
-            max_tokens: config.max_tokens ?? undefined,
-            temperature: config.temperature
-                ? mapNumberInRange(config.temperature, 0, 1, 0, 2)
-                : undefined,
+            tools: this.convertTools(config.tools),
             tool_choice: tool_choice,
+            ...settings,
         };
 
         return openAIConfig;
@@ -360,8 +355,10 @@ export class OpenAIProvider extends Provider {
                             role: 'tool',
                             tool_call_id: tool_result.id,
                             content: tool_result.error
-                                ? `Something went wrong calling your last tool - \n ${tool_result.result}`
-                                : tool_result.result,
+                                ? `Something went wrong calling your last tool - \n ${typeof tool_result.result !== 'string' ? JSON.stringify(tool_result.result) : tool_result.result}`
+                                : typeof tool_result.result !== 'string'
+                                  ? JSON.stringify(tool_result.result)
+                                  : tool_result.result,
                         });
                     }
                     break;

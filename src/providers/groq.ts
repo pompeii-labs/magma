@@ -1,9 +1,10 @@
 import { MAX_RETRIES, Provider } from '.';
 import {
+    GroqProviderConfig,
     MagmaAssistantMessage,
     MagmaCompletion,
+    MagmaCompletionConfig,
     MagmaCompletionStopReason,
-    MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
     MagmaTool,
@@ -19,17 +20,11 @@ import {
     ChatCompletion,
 } from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
-import { cleanParam, mapNumberInRange, sleep } from '../helpers';
+import { cleanParam, sleep } from '../helpers';
 import { Logger } from '../logger';
 
 export class GroqProvider extends Provider {
-    static override convertConfig(config: MagmaConfig): GroqConfig {
-        const tools: GroqTool[] | undefined = config.tools
-            ? this.convertTools(config.tools)
-            : undefined;
-
-        const model = config.providerConfig.model;
-
+    static override convertConfig(config: MagmaCompletionConfig): GroqConfig {
         let tool_choice = undefined;
 
         if (config.tool_choice === 'auto') tool_choice = 'auto';
@@ -37,25 +32,24 @@ export class GroqProvider extends Provider {
         else if (typeof config.tool_choice === 'string')
             tool_choice = { type: 'function', function: { name: config.tool_choice } };
 
+        const { model, settings } = config.providerConfig as GroqProviderConfig;
+
         delete config.providerConfig;
 
         const groqConfig: GroqConfig = {
             ...config,
             model,
             messages: this.convertMessages(config.messages),
-            tools,
-            max_tokens: config.max_tokens ?? undefined,
+            tools: this.convertTools(config.tools),
             tool_choice,
-            temperature: config.temperature
-                ? mapNumberInRange(config.temperature, 0, 1, 0, 2)
-                : undefined,
+            ...settings,
         };
 
         return groqConfig;
     }
 
     static override async makeCompletionRequest(
-        config: MagmaConfig,
+        config: MagmaCompletionConfig,
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
@@ -261,7 +255,9 @@ export class GroqProvider extends Provider {
         }
     }
 
-    static override convertTools(tools: MagmaTool[]): GroqTool[] {
+    static override convertTools(tools: MagmaTool[]): GroqTool[] | undefined {
+        if (tools.length === 0) return undefined;
+
         const groqTools: GroqTool[] = [];
 
         for (const tool of tools) {
@@ -353,8 +349,10 @@ export class GroqProvider extends Provider {
                             role: 'tool',
                             tool_call_id: tool_result.id,
                             content: tool_result.error
-                                ? `Something went wrong calling your last tool - \n ${tool_result.result}`
-                                : tool_result.result,
+                                ? `Something went wrong calling your last tool - \n ${typeof tool_result.result !== 'string' ? JSON.stringify(tool_result.result) : tool_result.result}`
+                                : typeof tool_result.result !== 'string'
+                                  ? JSON.stringify(tool_result.result)
+                                  : tool_result.result,
                         });
                     }
                     break;

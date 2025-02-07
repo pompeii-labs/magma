@@ -1,7 +1,7 @@
 import {
     MagmaCompletion,
+    MagmaCompletionConfig,
     MagmaCompletionStopReason,
-    MagmaConfig,
     MagmaMessage,
     MagmaProvider,
     MagmaStreamChunk,
@@ -49,7 +49,7 @@ export abstract class Provider implements ProviderProps {
     }
 
     static async makeCompletionRequest(
-        config: MagmaConfig,
+        config: MagmaCompletionConfig,
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
@@ -66,7 +66,7 @@ export abstract class Provider implements ProviderProps {
         throw new Error('Provider.convertTools not implemented');
     }
 
-    static convertConfig(config: MagmaConfig): object {
+    static convertConfig(config: MagmaCompletionConfig): object {
         config;
         throw new Error('Provider.convertConfig not implemented');
     }

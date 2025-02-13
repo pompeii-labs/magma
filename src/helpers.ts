@@ -100,8 +100,8 @@ function wrapEventHandler(
 
     const methodName = method['_methodName'] || method['name'];
 
-    const originalHandler = method;
-    method = async (...args: any[]) => {
+    const originalHandler = method.bind(target);
+    const wrappedHandler = async (...args: any[]) => {
         try {
             await target.onEvent?.(type, methodName, ...args);
         } catch {}
@@ -109,7 +109,7 @@ function wrapEventHandler(
         return await originalHandler(...args);
     };
 
-    return method.bind(target);
+    return wrappedHandler;
 }
 
 /**

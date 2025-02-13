@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ChatCompletionCreateParamsBase as OpenAISettings } from 'openai/resources/chat/completions';
+import { ChatCompletionCreateParamsBase as OpenAISettings } from 'openai/resources/chat/completions/completions';
 import {
     GoogleGenerativeAI,
     ModelParams as GoogleModelParams,

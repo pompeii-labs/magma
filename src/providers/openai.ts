@@ -19,11 +19,8 @@ import {
     ChatCompletionTool as OpenAITool,
 } from 'openai/resources/index';
 import { cleanParam, sleep } from '../helpers';
-import {
-    ChatCompletion,
-    ChatCompletionChunk,
-    ChatCompletionCreateParamsBase,
-} from 'openai/resources/chat/completions';
+import { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
+import { ChatCompletionCreateParamsBase } from 'openai/resources/chat/completions/completions';
 
 export class OpenAIProvider extends Provider {
     static override async makeCompletionRequest(

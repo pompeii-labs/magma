@@ -94,6 +94,12 @@ export class MagmaAgent {
      */
     public async receive?(message: any): Promise<void> {}
 
+    public async onEvent?(
+        type: 'job' | 'hook' | 'tool' | 'middleware',
+        name: string,
+        event: any
+    ): Promise<void> {}
+
     public async cleanup(): Promise<void> {
         try {
             await this.onCleanup();

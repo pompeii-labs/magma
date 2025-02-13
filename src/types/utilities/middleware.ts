@@ -22,6 +22,7 @@ export type MagmaMiddleware = {
         message: MagmaUserMessage | MagmaAssistantMessage | MagmaToolCall | MagmaToolResult,
         state?: MagmaState
     ) => Promise<string | void> | string | void;
+    name?: string;
 };
 
 export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =

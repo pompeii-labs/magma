@@ -12,9 +12,10 @@ import {
 } from '@google/generative-ai';
 import { MAX_RETRIES, Provider } from '.';
 import {
+    GoogleProviderConfig,
     MagmaCompletion,
+    MagmaCompletionConfig,
     MagmaCompletionStopReason,
-    MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
     MagmaTool,
@@ -26,7 +27,7 @@ import { Logger } from '../logger';
 
 export class GoogleProvider extends Provider {
     static override async makeCompletionRequest(
-        config: MagmaConfig,
+        config: MagmaCompletionConfig,
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
@@ -223,7 +224,9 @@ export class GoogleProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): FunctionDeclaration[] {
+    static override convertTools(tools: MagmaTool[]): FunctionDeclaration[] | undefined {
+        if (tools.length === 0) return undefined;
+
         const googleTools: FunctionDeclaration[] = [];
 
         for (const tool of tools) {
@@ -243,10 +246,8 @@ export class GoogleProvider extends Provider {
     }
 
     // MagmaConfig to Provider-specific config converter
-    static override convertConfig(config: MagmaConfig): ModelParams {
-        const functionDeclarations: FunctionDeclaration[] | undefined = config.tools
-            ? this.convertTools(config.tools)
-            : undefined;
+    static override convertConfig(config: MagmaCompletionConfig): ModelParams {
+        const functionDeclarations: FunctionDeclaration[] = this.convertTools(config.tools);
 
         let toolConfig: ToolConfig = {
             functionCallingConfig: {
@@ -270,7 +271,7 @@ export class GoogleProvider extends Provider {
                 functionDeclarations,
             });
 
-        const model = config.providerConfig.model;
+        const { model, settings } = config.providerConfig as GoogleProviderConfig;
 
         const googleConfig: ModelParams = {
             model,
@@ -280,10 +281,7 @@ export class GoogleProvider extends Provider {
                 .filter((m) => m.role === 'system')
                 .map((m) => m.content)
                 .join('\n'),
-            generationConfig: {
-                maxOutputTokens: config.max_tokens,
-                temperature: config.temperature,
-            },
+            generationConfig: settings,
         };
 
         return googleConfig;
@@ -352,9 +350,14 @@ export class GoogleProvider extends Provider {
                                 name: toolResult.fn_name,
                                 response: toolResult.error
                                     ? {
-                                          error: `Something went wrong calling your last tool - \n ${toolResult.result}`,
+                                          error: `Something went wrong calling your last tool - \n ${typeof toolResult.result !== 'string' ? JSON.stringify(toolResult.result) : toolResult.result}`,
                                       }
-                                    : { result: toolResult.result },
+                                    : {
+                                          result:
+                                              typeof toolResult.result !== 'string'
+                                                  ? JSON.stringify(toolResult.result)
+                                                  : toolResult.result,
+                                      },
                             },
                         })),
                     });

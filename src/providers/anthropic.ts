@@ -1,9 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { MAX_RETRIES, Provider } from '.';
 import {
+    AnthropicProviderConfig,
     MagmaCompletion,
+    MagmaCompletionConfig,
     MagmaCompletionStopReason,
-    MagmaConfig,
     MagmaMessage,
     MagmaStreamChunk,
     MagmaTool,
@@ -23,11 +24,7 @@ import { Logger } from '../logger';
 import { cleanParam, sleep } from '../helpers';
 
 export class AnthropicProvider extends Provider {
-    static override convertConfig(config: MagmaConfig): AnthropicConfig {
-        const tools: AnthropicTool[] | undefined = config.tools
-            ? this.convertTools(config.tools)
-            : undefined;
-
+    static override convertConfig(config: MagmaCompletionConfig): AnthropicConfig {
         let tool_choice = undefined;
 
         if (config.tool_choice === 'auto') tool_choice = { type: 'auto' };
@@ -35,7 +32,7 @@ export class AnthropicProvider extends Provider {
         else if (typeof config.tool_choice === 'string')
             tool_choice = { type: 'tool', name: config.tool_choice };
 
-        const model = config.providerConfig.model;
+        const { model, settings } = config.providerConfig as AnthropicProviderConfig;
 
         delete config.providerConfig;
 
@@ -43,13 +40,14 @@ export class AnthropicProvider extends Provider {
             ...config,
             model,
             messages: this.convertMessages(config.messages),
-            max_tokens: config.max_tokens ?? (model.includes('claude-3-5') ? 8192 : 4096),
-            tools,
+            max_tokens: settings?.max_tokens ?? (model.includes('claude-3-5') ? 8192 : 4096),
+            tools: this.convertTools(config.tools),
             tool_choice,
             system: config.messages
                 .filter((m) => m.role === 'system')
                 .map((m) => m.content)
                 .join('\n'),
+            ...settings,
         };
 
         return anthropicConfig;
@@ -138,7 +136,10 @@ export class AnthropicProvider extends Provider {
                         content: message.tool_results.map((toolResult) => ({
                             type: 'tool_result',
                             tool_use_id: toolResult.id,
-                            content: toolResult.result,
+                            content:
+                                typeof toolResult.result !== 'string'
+                                    ? JSON.stringify(toolResult.result)
+                                    : toolResult.result,
                             is_error: toolResult.error,
                         })),
                     });
@@ -156,7 +157,7 @@ export class AnthropicProvider extends Provider {
     }
 
     static override async makeCompletionRequest(
-        config: MagmaConfig,
+        config: MagmaCompletionConfig,
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
@@ -380,7 +381,9 @@ export class AnthropicProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): AnthropicTool[] {
+    static override convertTools(tools: MagmaTool[]): AnthropicTool[] | undefined {
+        if (tools.length === 0) return undefined;
+
         const anthropicTools: AnthropicTool[] = [];
         for (const tool of tools) {
             const baseObject: MagmaToolParam = {

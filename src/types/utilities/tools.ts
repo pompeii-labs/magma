@@ -44,7 +44,7 @@ export type MagmaToolParam =
 export type MagmaToolTarget = (
     call: MagmaToolCall,
     state?: MagmaState
-) => Promise<unknown> | unknown;
+) => Promise<string | Record<string, any>> | string | Record<string, any>;
 // Tool type containing the json schema sent to the LLM and the target to be called with the generated args
 export type MagmaTool = {
     name: string;

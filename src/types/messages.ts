@@ -64,7 +64,7 @@ export type MagmaToolCall = {
 
 export type MagmaToolResult = {
     id: string;
-    result: unknown;
+    result: string | Record<string, any>;
     error?: boolean;
     fn_name: string;
 };

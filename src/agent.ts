@@ -72,10 +72,6 @@ export class MagmaAgent {
         this.logger?.debug('Agent initialized');
     }
 
-    public get providerName(): MagmaProvider {
-        return this.providerConfig.provider;
-    }
-
     public async setup?(opts?: object): Promise<void> {}
 
     /**
@@ -137,7 +133,7 @@ export class MagmaAgent {
             this.setProviderConfig(config);
         }
 
-        const provider = Provider.factory(this.providerName);
+        const provider = Provider.factory(this.providerConfig.provider);
 
         const messages = [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)];
         if (messages.length > 0 && messages.at(-1).role === 'tool_call') {
@@ -280,7 +276,7 @@ export class MagmaAgent {
                 this.setProviderConfig(config);
             }
 
-            const provider = Provider.factory(this.providerName);
+            const provider = Provider.factory(this.providerConfig.provider);
 
             const completionConfig: MagmaCompletionConfig = {
                 providerConfig: this.providerConfig,
@@ -435,7 +431,8 @@ export class MagmaAgent {
             // Validate images are base64 data, not URLs
             for (const image of message.images ?? []) {
                 if (
-                    (this.providerName === 'anthropic' || this.providerName === 'google') &&
+                    (this.providerConfig.provider === 'anthropic' ||
+                        this.providerConfig.provider === 'google') &&
                     typeof image === 'string'
                 ) {
                     if (image.startsWith('http')) {
@@ -667,7 +664,7 @@ export class MagmaAgent {
         // Get the constructor of the current instance
         const currentConstructor = Object.getPrototypeOf(this).constructor;
         // Get the static utilities from the current class
-        const childUtilities = currentConstructor.getUtilities();
+        const childUtilities = currentConstructor.getUtilities?.() ?? [];
 
         return [...baseUtilities, ...childUtilities];
     }

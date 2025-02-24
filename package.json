@@ -56,9 +56,9 @@
     "ws": "^8.18.0"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": "~0.36.3",
-    "@google/generative-ai": "~0.21.0",
-    "groq-sdk": "~0.15.0",
-    "openai": "~4.85.0"
+    "@anthropic-ai/sdk": "^0.37.0",
+    "@google/generative-ai": "^0.21.0",
+    "groq-sdk": "^0.15.0",
+    "openai": "~4.85.0"  
   }
 }

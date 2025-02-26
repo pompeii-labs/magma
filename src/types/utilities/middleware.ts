@@ -1,9 +1,10 @@
 import {
     MagmaAssistantMessage,
     MagmaState,
+    MagmaTextBlock,
     MagmaToolCall,
     MagmaToolResult,
-    MagmaToolResultMessage,
+    MagmaToolResultBlock,
     MagmaUserMessage,
 } from '../index';
 
@@ -27,11 +28,11 @@ export type MagmaMiddleware = {
 
 export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =
     T extends 'preCompletion'
-        ? string
+        ? MagmaTextBlock[]
         : T extends 'onCompletion'
-          ? string
+          ? MagmaTextBlock[]
           : T extends 'preToolExecution'
-            ? MagmaToolResultMessage
+            ? MagmaToolResultBlock[]
             : T extends 'onToolExecution'
-              ? MagmaToolResultMessage
+              ? MagmaToolResultBlock[]
               : never;

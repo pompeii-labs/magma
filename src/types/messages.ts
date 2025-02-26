@@ -9,7 +9,7 @@ export type MagmaCompletionStopReason =
     | 'unknown';
 
 export type MagmaCompletion = {
-    message: MagmaAssistantMessage | MagmaToolCallMessage | MagmaToolResultMessage;
+    message: MagmaMessage;
     provider: MagmaProvider;
     model: string;
     usage: MagmaUsage;
@@ -21,7 +21,7 @@ export type MagmaUsage = {
     output_tokens: number;
 };
 
-export type MagmaImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+export type MagmaImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/url';
 
 export type MagmaImage = {
     data: string;
@@ -29,30 +29,58 @@ export type MagmaImage = {
 };
 
 // Provider-agnostic message type
-export type MagmaMessage =
-    | MagmaSystemMessage
-    | MagmaAssistantMessage
-    | MagmaUserMessage
-    | MagmaToolCallMessage
-    | MagmaToolResultMessage;
+export type MagmaMessageType = MagmaSystemMessage | MagmaAssistantMessage | MagmaUserMessage;
 
 export type MagmaSystemMessage = {
     id?: string | number;
     role: 'system';
-    content: string;
+    content: string | MagmaTextBlock[];
 };
+
+export type MagmaTextBlock = {
+    type: 'text';
+    text: string;
+};
+
+export type MagmaToolCallBlock = {
+    type: 'tool_call';
+    tool_call: MagmaToolCall;
+};
+
+export type MagmaToolResultBlock = {
+    type: 'tool_result';
+    tool_result: MagmaToolResult;
+};
+
+export type MagmaReasoningBlock = {
+    type: 'reasoning';
+    reasoning: string;
+    redacted?: true;
+    signature?: string;
+};
+
+export type MagmaImageBlock = {
+    type: 'image';
+    image: MagmaImage;
+};
+
+export type MagmaContentBlock =
+    | MagmaTextBlock
+    | MagmaToolCallBlock
+    | MagmaToolResultBlock
+    | MagmaReasoningBlock
+    | MagmaImageBlock;
 
 export type MagmaUserMessage = {
     id?: string | number;
     role: 'user';
-    content: string;
-    images?: string[] | MagmaImage[];
+    content: MagmaContentBlock[] | string;
 };
 
 export type MagmaAssistantMessage = {
     id?: string | number;
     role: 'assistant';
-    content: string;
+    content: MagmaContentBlock[] | string;
 };
 
 // Provider-agnostic tool/function type
@@ -69,40 +97,15 @@ export type MagmaToolResult = {
     fn_name: string;
 };
 
-export type MagmaToolCallMessage = {
-    role: 'tool_call';
-    content?: string;
-    tool_calls: MagmaToolCall[];
-};
-
-export type MagmaToolResultMessage = {
-    role: 'tool_result';
-    tool_results: MagmaToolResult[];
-};
-
 export type MagmaStreamChunk = {
     id: string;
     provider: MagmaProvider;
     model: string;
     delta: {
-        content: string | null;
-        tool_calls:
-            | {
-                  id?: string;
-                  name?: string;
-                  arguments?: string;
-              }[]
-            | null;
+        content: MagmaContentBlock[];
     };
     buffer: {
-        content: string | null;
-        tool_calls:
-            | {
-                  id?: string;
-                  name?: string;
-                  arguments?: string;
-              }[]
-            | null;
+        content: MagmaContentBlock[];
     };
     stop_reason: MagmaCompletionStopReason;
     usage: {
@@ -110,3 +113,54 @@ export type MagmaStreamChunk = {
         output_tokens: number | null;
     };
 };
+
+export class MagmaMessage {
+    id?: string | number;
+    role: MagmaMessageType['role'];
+    content: MagmaContentBlock[];
+
+    constructor({ role, content, id }: MagmaMessageType) {
+        this.id = id;
+        this.role = role;
+        if (typeof content === 'string') {
+            this.content = [
+                {
+                    type: 'text',
+                    text: content,
+                },
+            ];
+        } else {
+            this.content = content;
+        }
+    }
+
+    public getText(): string {
+        return this.content
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n');
+    }
+
+    public getToolCalls(): MagmaToolCall[] {
+        return this.content
+            .filter((block) => block.type === 'tool_call')
+            .map((block) => block.tool_call);
+    }
+
+    public getToolResults(): MagmaToolResult[] {
+        return this.content
+            .filter((block) => block.type === 'tool_result')
+            .map((block) => block.tool_result);
+    }
+
+    public getReasoning(): string {
+        return this.content
+            .filter((block) => block.type === 'reasoning' && !block.redacted)
+            .map((block: MagmaReasoningBlock) => block.reasoning)
+            .join('\n');
+    }
+
+    public getImages(): MagmaImage[] {
+        return this.content.filter((block) => block.type === 'image').map((block) => block.image);
+    }
+}

@@ -1,9 +1,7 @@
 import {
     MagmaAssistantMessage,
     MagmaMessage,
-    MagmaProvider,
     MagmaProviderConfig,
-    MagmaSystemMessage,
     MagmaTool,
     MagmaMiddleware,
     MagmaMiddlewareTriggerType,
@@ -17,7 +15,6 @@ import {
     MagmaCompletionConfig,
     MagmaToolResultBlock,
     MagmaMessageType,
-    MagmaTextBlock,
     MagmaContentBlock,
 } from './types';
 import { Provider } from './providers';
@@ -142,7 +139,7 @@ export class MagmaAgent {
             ...this.getMessages(this.messageContext),
         ];
         if (messages.length > 0 && messages.at(-1).role === 'assistant') {
-            messages[messages.length - 1].content = messages[messages.length - 1].content.filter(
+            messages[messages.length - 1].blocks = messages[messages.length - 1].blocks.filter(
                 (block) => block.type !== 'tool_call'
             );
         }
@@ -183,7 +180,7 @@ export class MagmaAgent {
 
         const toolResultMessage = new MagmaMessage({
             role: 'assistant',
-            content: toolResultBlocks,
+            blocks: toolResultBlocks,
         });
 
         this.messages.push(toolResultMessage);
@@ -223,10 +220,10 @@ export class MagmaAgent {
                     // If the middleware throws an error, return an assistant message with the error to notify the user
                     // remove the user message from the messages array
                     this.messages.pop();
-                    return {
+                    return new MagmaMessage({
                         role: 'assistant',
-                        content: middlewareErrors,
-                    };
+                        blocks: middlewareErrors,
+                    });
                 }
             }
 
@@ -271,7 +268,7 @@ export class MagmaAgent {
             if (message.getToolCalls().length > 0) {
                 const toolResultBlocks = await this.executeTools(message);
 
-                this.messages.push(new MagmaMessage({ role: 'user', content: toolResultBlocks }));
+                this.messages.push(new MagmaMessage({ role: 'user', blocks: toolResultBlocks }));
 
                 // Trigger another completion because last message was a tool call
                 return await this.main(config);
@@ -287,7 +284,7 @@ export class MagmaAgent {
                     // Add a system message with all the errors from middleware
                     this.addMessage({
                         role: 'system',
-                        content: middlewareErrors,
+                        blocks: middlewareErrors,
                     });
 
                     return await this.main();
@@ -499,7 +496,7 @@ export class MagmaAgent {
                 'onToolExecution',
                 new MagmaMessage({
                     role: 'assistant',
-                    content: toolResultBlocks,
+                    blocks: toolResultBlocks,
                 })
             )) ?? [];
 

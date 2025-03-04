@@ -178,10 +178,10 @@ export class GroqProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', content: [] });
+                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text: contentBuffer,
                     });
@@ -197,7 +197,7 @@ export class GroqProvider extends Provider {
                             fn_args: safeJSON(toolCall.function.arguments),
                         },
                     }));
-                    magmaMessage.content.push(...toolCallBlocks);
+                    magmaMessage.blocks.push(...toolCallBlocks);
                 }
 
                 const magmaCompletion: MagmaCompletion = {
@@ -221,10 +221,10 @@ export class GroqProvider extends Provider {
                 const choice = groqCompletion.choices[0];
                 const groqMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', content: [] });
+                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
 
                 if (groqMessage?.content) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text: groqMessage.content,
                     });
@@ -241,10 +241,10 @@ export class GroqProvider extends Provider {
                             },
                         })
                     );
-                    magmaMessage.content.push(...toolCallBlocks);
+                    magmaMessage.blocks.push(...toolCallBlocks);
                 }
 
-                if (magmaMessage.content.length === 0) {
+                if (magmaMessage.blocks.length === 0) {
                     console.log(JSON.stringify(groqCompletion.choices[0], null, 2));
                     throw new Error('Groq completion was null');
                 }

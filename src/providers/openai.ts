@@ -156,10 +156,10 @@ export class OpenAIProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', content: [] });
+                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text: contentBuffer,
                     });
@@ -175,7 +175,7 @@ export class OpenAIProvider extends Provider {
                             fn_args: safeJSON(toolCall.function.arguments),
                         },
                     }));
-                    magmaMessage.content.push(...toolCallBlocks);
+                    magmaMessage.blocks.push(...toolCallBlocks);
                 }
 
                 const magmaCompletion: MagmaCompletion = {
@@ -199,10 +199,10 @@ export class OpenAIProvider extends Provider {
                 const choice = openAICompletion.choices[0];
                 const openAIMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', content: [] });
+                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
 
                 if (openAIMessage?.content) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text: openAIMessage.content,
                     });
@@ -219,10 +219,10 @@ export class OpenAIProvider extends Provider {
                             },
                         })
                     );
-                    magmaMessage.content.push(...toolCallBlocks);
+                    magmaMessage.blocks.push(...toolCallBlocks);
                 }
 
-                if (magmaMessage.content.length === 0) {
+                if (magmaMessage.blocks.length === 0) {
                     console.log(JSON.stringify(openAICompletion.choices[0], null, 2));
                     throw new Error('OpenAI completion was null');
                 }

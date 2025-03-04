@@ -29,12 +29,16 @@ export type MagmaImage = {
 };
 
 // Provider-agnostic message type
-export type MagmaMessageType = MagmaSystemMessage | MagmaAssistantMessage | MagmaUserMessage;
+export type MagmaMessageType =
+    | MagmaSystemMessageType
+    | MagmaAssistantMessageType
+    | MagmaUserMessageType;
 
-export type MagmaSystemMessage = {
+type MagmaSystemMessageType = {
     id?: string | number;
     role: 'system';
-    content: string | MagmaTextBlock[];
+    blocks?: MagmaContentBlock[];
+    content?: string;
 };
 
 export type MagmaTextBlock = {
@@ -71,16 +75,18 @@ export type MagmaContentBlock =
     | MagmaReasoningBlock
     | MagmaImageBlock;
 
-export type MagmaUserMessage = {
+type MagmaUserMessageType = {
     id?: string | number;
     role: 'user';
-    content: MagmaContentBlock[] | string;
+    blocks?: MagmaContentBlock[];
+    content?: string;
 };
 
-export type MagmaAssistantMessage = {
+type MagmaAssistantMessageType = {
     id?: string | number;
     role: 'assistant';
-    content: MagmaContentBlock[] | string;
+    blocks?: MagmaContentBlock[];
+    content?: string;
 };
 
 // Provider-agnostic tool/function type
@@ -117,50 +123,76 @@ export type MagmaStreamChunk = {
 export class MagmaMessage {
     id?: string | number;
     role: MagmaMessageType['role'];
-    content: MagmaContentBlock[];
+    blocks: MagmaContentBlock[];
 
-    constructor({ role, content, id }: MagmaMessageType) {
+    constructor({ role, content, blocks, id }: MagmaMessageType) {
         this.id = id;
         this.role = role;
-        if (typeof content === 'string') {
-            this.content = [
+        if (content && blocks) {
+            throw new Error('Cannot provide both content and blocks to MagmaMessage constructor');
+        }
+
+        if (content) {
+            this.blocks = [
                 {
                     type: 'text',
                     text: content,
                 },
             ];
-        } else {
-            this.content = content;
+        } else if (blocks) {
+            this.blocks = blocks;
         }
     }
 
     public getText(): string {
-        return this.content
+        return this.blocks
             .filter((block) => block.type === 'text')
             .map((block) => block.text)
             .join('\n');
     }
 
     public getToolCalls(): MagmaToolCall[] {
-        return this.content
+        return this.blocks
             .filter((block) => block.type === 'tool_call')
             .map((block) => block.tool_call);
     }
 
     public getToolResults(): MagmaToolResult[] {
-        return this.content
+        return this.blocks
             .filter((block) => block.type === 'tool_result')
             .map((block) => block.tool_result);
     }
 
     public getReasoning(): string {
-        return this.content
+        return this.blocks
             .filter((block) => block.type === 'reasoning' && !block.redacted)
             .map((block: MagmaReasoningBlock) => block.reasoning)
             .join('\n');
     }
 
     public getImages(): MagmaImage[] {
-        return this.content.filter((block) => block.type === 'image').map((block) => block.image);
+        return this.blocks.filter((block) => block.type === 'image').map((block) => block.image);
+    }
+
+    public get content(): string {
+        return this.getText();
+    }
+}
+
+export class MagmaUserMessage extends MagmaMessage {
+    constructor(magmaUserMessage: MagmaUserMessageType) {
+        super(magmaUserMessage);
+    }
+}
+
+export class MagmaAssistantMessage extends MagmaMessage {
+    constructor(magmaAssistantMessage: MagmaAssistantMessageType) {
+        super(magmaAssistantMessage);
+    }
+}
+
+export class MagmaSystemMessage extends MagmaMessage {
+    constructor(magmaSystemMessage: MagmaSystemMessageType) {
+        super(magmaSystemMessage);
     }
 }

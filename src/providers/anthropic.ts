@@ -71,7 +71,7 @@ export class AnthropicProvider extends Provider {
                 case 'assistant':
                     let assistantContent: AnthropicMessageParam['content'] = [];
 
-                    for (const block of message.content) {
+                    for (const block of message.blocks) {
                         switch (block.type) {
                             case 'reasoning':
                                 if (block.redacted) {
@@ -136,7 +136,7 @@ export class AnthropicProvider extends Provider {
                 case 'user':
                     let userContent: AnthropicMessageParam['content'] = [];
 
-                    for (const block of message.content) {
+                    for (const block of message.blocks) {
                         switch (block.type) {
                             case 'text':
                                 userContent.push({
@@ -364,7 +364,7 @@ export class AnthropicProvider extends Provider {
                         case 'message_stop': {
                             let magmaMessage: MagmaMessage = new MagmaMessage({
                                 role: 'assistant',
-                                content: blockBuffer.map((b) =>
+                                blocks: blockBuffer.map((b) =>
                                     b.type === 'tool_call'
                                         ? {
                                               type: 'tool_call',
@@ -415,19 +415,19 @@ export class AnthropicProvider extends Provider {
 
                 let magmaMessage: MagmaMessage = new MagmaMessage({
                     role: 'assistant',
-                    content: [],
+                    blocks: [],
                 });
 
                 for (const block of blocks) {
                     switch (block.type) {
                         case 'text':
-                            magmaMessage.content.push({
+                            magmaMessage.blocks.push({
                                 type: 'text',
                                 text: block.text,
                             });
                             break;
                         case 'tool_use':
-                            magmaMessage.content.push({
+                            magmaMessage.blocks.push({
                                 type: 'tool_call',
                                 tool_call: {
                                     id: block.id,
@@ -437,14 +437,14 @@ export class AnthropicProvider extends Provider {
                             });
                             break;
                         case 'thinking':
-                            magmaMessage.content.push({
+                            magmaMessage.blocks.push({
                                 type: 'reasoning',
                                 reasoning: block.thinking,
                                 signature: block.signature,
                             });
                             break;
                         case 'redacted_thinking':
-                            magmaMessage.content.push({
+                            magmaMessage.blocks.push({
                                 type: 'reasoning',
                                 reasoning: block.data,
                                 redacted: true,
@@ -457,7 +457,7 @@ export class AnthropicProvider extends Provider {
                     }
                 }
 
-                if (magmaMessage.content.length === 0) {
+                if (magmaMessage.blocks.length === 0) {
                     throw new Error('Anthropic completion was null');
                 }
 

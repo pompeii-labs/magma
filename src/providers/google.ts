@@ -137,11 +137,11 @@ export class GoogleProvider extends Provider {
                 onStreamChunk?.(null);
                 let magmaMessage: MagmaMessage = new MagmaMessage({
                     role: 'assistant',
-                    content: [],
+                    blocks: [],
                 });
 
                 for (const toolCall of streamedToolCalls) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'tool_call',
                         tool_call: {
                             id: toolCall.id,
@@ -152,7 +152,7 @@ export class GoogleProvider extends Provider {
                 }
 
                 if (contentBuffer.length > 0) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text: contentBuffer,
                     });
@@ -177,14 +177,14 @@ export class GoogleProvider extends Provider {
 
                 let magmaMessage: MagmaMessage = new MagmaMessage({
                     role: 'assistant',
-                    content: [],
+                    blocks: [],
                 });
 
                 const functionCalls = googleCompletion.response.functionCalls() ?? [];
                 const text = googleCompletion.response.text();
 
                 for (const toolCall of functionCalls) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'tool_call',
                         tool_call: {
                             id: crypto.randomUUID(),
@@ -195,13 +195,13 @@ export class GoogleProvider extends Provider {
                 }
 
                 if (text?.length > 0) {
-                    magmaMessage.content.push({
+                    magmaMessage.blocks.push({
                         type: 'text',
                         text,
                     });
                 }
 
-                if (magmaMessage.content.length === 0) {
+                if (magmaMessage.blocks.length === 0) {
                     console.log(JSON.stringify(googleCompletion.response, null, 2));
                     throw new Error('Google completion was null');
                 }
@@ -321,7 +321,7 @@ export class GoogleProvider extends Provider {
                     continue;
                 case 'assistant':
                     let assistantParts: Part[] = [];
-                    for (const block of message.content) {
+                    for (const block of message.blocks) {
                         switch (block.type) {
                             case 'text':
                                 assistantParts.push({ text: block.text });
@@ -352,7 +352,7 @@ export class GoogleProvider extends Provider {
                     break;
                 case 'user':
                     let userParts: Part[] = [];
-                    for (const block of message.content) {
+                    for (const block of message.blocks) {
                         switch (block.type) {
                             case 'text':
                                 userParts.push({ text: block.text });

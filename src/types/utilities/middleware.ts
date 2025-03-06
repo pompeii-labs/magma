@@ -1,11 +1,7 @@
 import {
-    MagmaAssistantMessage,
     MagmaState,
-    MagmaTextBlock,
     MagmaToolCall,
     MagmaToolResult,
-    MagmaToolResultBlock,
-    MagmaUserMessage,
 } from '../index';
 
 export const MagmaMiddlewareTriggers = [
@@ -17,22 +13,35 @@ export const MagmaMiddlewareTriggers = [
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
 
+export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =
+    T extends 'preCompletion'
+        ? string | void
+        : T extends 'onCompletion'
+          ? string | void
+          : T extends 'preToolExecution'
+            ? MagmaToolCall | void
+            : T extends 'onToolExecution'
+              ? MagmaToolResult | void
+              : never;
+
+export type MagmaMiddlewareParamType<T extends MagmaMiddlewareTriggerType> =
+    T extends 'preToolExecution'
+        ? MagmaToolCall
+        : T extends 'onToolExecution'
+          ? MagmaToolResult
+          : T extends 'preCompletion'
+            ? string
+            : T extends 'onCompletion'
+              ? string
+              : never;
+
 export type MagmaMiddleware = {
     trigger: MagmaMiddlewareTriggerType;
     action: (
-        message: MagmaUserMessage | MagmaAssistantMessage | MagmaToolCall | MagmaToolResult,
+        message: MagmaMiddlewareParamType<MagmaMiddlewareTriggerType>,
         state?: MagmaState
-    ) => Promise<string | void> | string | void;
+    ) =>
+        | Promise<MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>>
+        | MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>;
     name?: string;
 };
-
-export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =
-    T extends 'preCompletion'
-        ? MagmaTextBlock[]
-        : T extends 'onCompletion'
-          ? MagmaTextBlock[]
-          : T extends 'preToolExecution'
-            ? MagmaToolResultBlock[]
-            : T extends 'onToolExecution'
-              ? MagmaToolResultBlock[]
-              : never;

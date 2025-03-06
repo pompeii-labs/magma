@@ -94,6 +94,7 @@ export type MagmaToolCall = {
     id: string;
     fn_name: string;
     fn_args: Record<string, any>;
+    error?: string;
 };
 
 export type MagmaToolResult = {
@@ -180,18 +181,21 @@ export class MagmaMessage {
 }
 
 export class MagmaUserMessage extends MagmaMessage {
+    role: 'user';
     constructor(magmaUserMessage: MagmaUserMessageType) {
         super(magmaUserMessage);
     }
 }
 
 export class MagmaAssistantMessage extends MagmaMessage {
+    role: 'assistant';
     constructor(magmaAssistantMessage: MagmaAssistantMessageType) {
         super(magmaAssistantMessage);
     }
 }
 
 export class MagmaSystemMessage extends MagmaMessage {
+    role: 'system';
     constructor(magmaSystemMessage: MagmaSystemMessageType) {
         super(magmaSystemMessage);
     }

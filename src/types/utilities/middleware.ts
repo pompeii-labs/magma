@@ -1,8 +1,4 @@
-import {
-    MagmaState,
-    MagmaToolCall,
-    MagmaToolResult,
-} from '../index';
+import { MagmaState, MagmaToolCall, MagmaToolResult } from '../index';
 
 export const MagmaMiddlewareTriggers = [
     'onCompletion',

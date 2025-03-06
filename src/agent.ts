@@ -720,6 +720,11 @@ export class MagmaAgent {
 
     /* EVENT HANDLERS */
 
+    /**
+     * @deprecated use getSystemPrompt
+     */
+    getSystemPrompts: never;
+
     getSystemPrompt(): string {
         return '';
     }
@@ -739,27 +744,6 @@ export class MagmaAgent {
     }
 
     onCleanup(): Promise<void> {
-        return;
-    }
-
-    onConnect(): Promise<void> {
-        return;
-    }
-
-    onDisconnect(): Promise<void> {
-        return;
-    }
-
-    onAudioChunk(chunk: Buffer): Promise<void> {
-        chunk;
-        return;
-    }
-
-    onAudioCommit(): Promise<void> {
-        return;
-    }
-
-    onAbort(): Promise<void> {
         return;
     }
 }

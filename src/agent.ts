@@ -193,6 +193,12 @@ export class MagmaAgent {
             return await this.trigger(args, config);
         }
 
+        if (!modifiedMessage) {
+            throw new Error(
+                `Catastrophic error: failed onCompletion middleware ${kMiddlewareMaxRetries} times`
+            );
+        }
+
         const toolResults = await this.executeTools(completion.message);
 
         if (toolResults.length > 0) {
@@ -298,6 +304,12 @@ export class MagmaAgent {
                 return await this.main(config);
             }
 
+            if (!modifiedMessage) {
+                throw new Error(
+                    `Catastrophic error: failed onCompletion middleware ${kMiddlewareMaxRetries} times`
+                );
+            }
+
             const toolResults = await this.executeTools(completion.message);
 
             if (toolResults.length > 0) {
@@ -310,6 +322,27 @@ export class MagmaAgent {
 
                 // Trigger another completion because last message was a tool call
                 return await this.main(config);
+            }
+
+            try {
+                modifiedMessage = await this.runMiddleware('onMainFinish', modifiedMessage);
+            } catch (error) {
+                if (this.messages.at(-1).role === 'assistant') {
+                    this.messages.pop();
+                }
+
+                this.addMessage({
+                    role: 'system',
+                    content: error.message,
+                });
+
+                return await this.main(config);
+            }
+
+            if (!modifiedMessage) {
+                throw new Error(
+                    `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
+                );
             }
 
             return modifiedMessage as MagmaAssistantMessage;
@@ -568,13 +601,17 @@ export class MagmaAgent {
                         continue;
                     }
 
-                    // If the middleware is not preCompletion or onCompletion, we skip it
-                    if (trigger !== 'preCompletion' && trigger !== 'onCompletion') {
+                    // If the middleware is not preCompletion, onCompletion, or onMainFinish, we skip it
+                    if (
+                        trigger !== 'preCompletion' &&
+                        trigger !== 'onCompletion' &&
+                        trigger !== 'onMainFinish'
+                    ) {
                         messageResult.blocks.push(item);
                         continue;
                     }
                     middlewarePayload = item.text as MagmaMiddlewareParamType<
-                        'preCompletion' | 'onCompletion'
+                        'preCompletion' | 'onCompletion' | 'onMainFinish'
                     >;
                     break;
                 case 'tool_call':
@@ -622,16 +659,22 @@ export class MagmaAgent {
                     this.middlewareRetries[mHash] ??= 0;
                     this.middlewareRetries[mHash] += 1;
 
+                    // Add the error to the middlewareErrors array
+                    middlewareErrors.push(error.message);
+
                     if (this.middlewareRetries[mHash] >= kMiddlewareMaxRetries) {
                         this.logger?.error(
                             `${trigger} middleware failed to recover after ${kMiddlewareMaxRetries} attempts`
                         );
 
-                        return null;
+                        if (mdlwr.critical) {
+                            return null;
+                        } else {
+                            middlewareErrors.pop();
+                            delete this.middlewareRetries[mHash];
+                            continue;
+                        }
                     }
-
-                    // Add the error to the middlewareErrors array
-                    middlewareErrors.push(error.message);
 
                     this.logger?.warn(
                         `'${trigger}' middleware threw an error - ${error.message ?? 'Unknown'}`
@@ -644,7 +687,7 @@ export class MagmaAgent {
                     messageResult.blocks.push({
                         type: 'text',
                         text: middlewarePayload as MagmaMiddlewareParamType<
-                            'preCompletion' | 'onCompletion'
+                            'preCompletion' | 'onCompletion' | 'onMainFinish'
                         >,
                     });
                     break;
@@ -680,7 +723,7 @@ export class MagmaAgent {
             middleware.forEach(
                 (mdlwr) => delete this.middlewareRetries[hash(mdlwr.action.toString())]
             );
-        } else if (trigger === 'preCompletion' || trigger === 'onCompletion') {
+        } else if (trigger !== 'preToolExecution' && trigger !== 'onToolExecution') {
             throw new Error(middlewareErrors.join('\n'));
         }
 

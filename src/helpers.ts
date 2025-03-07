@@ -208,6 +208,7 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
                 trigger: method['_middlewareTrigger'],
                 action: wrapEventHandler('middleware', method, target).bind(target),
                 name: method['_methodName'] || method['name'],
+                critical: method['_critical'] ?? false,
             } as MagmaMiddleware);
         }
     }

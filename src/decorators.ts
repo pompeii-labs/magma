@@ -47,10 +47,10 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
  * Decorator for middleware functions to run during completion chains
  * @param trigger which middleware event should trigger the decorated function
  */
-export function middleware<T extends MagmaMiddlewareTriggerType>(args: {
-    trigger: T;
-    critical?: boolean;
-}) {
+export function middleware<T extends MagmaMiddlewareTriggerType>(
+    trigger: T,
+    options: { critical?: boolean } = { critical: false }
+) {
     return function <
         R extends MagmaMiddlewareReturnType<T> | Promise<MagmaMiddlewareReturnType<T>>,
     >(
@@ -63,8 +63,6 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(args: {
             }
         >
     ) {
-        const { trigger, critical } = args;
-
         if (!trigger) {
             throw new Error('Middleware trigger is required');
         }
@@ -74,7 +72,7 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(args: {
         }
 
         descriptor.value._middlewareTrigger = trigger;
-        descriptor.value._critical = critical;
+        descriptor.value._critical = options.critical;
         return descriptor;
     };
 }
@@ -84,13 +82,13 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(args: {
  * @param hookName name of the hook
  * ex: @hook('notification') -> POST /hooks/notification
  */
-export function hook(args: {
-    hookName: string;
-    agentIdPath?: HookRequestPath<HookRequestLocation>;
-}) {
+export function hook(
+    hookName: string,
+    options: { agentIdPath?: HookRequestPath<HookRequestLocation> } = {}
+) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
-        descriptor.value._hookName = args.hookName;
-        descriptor.value._agentIdPath = args.agentIdPath;
+        descriptor.value._hookName = hookName;
+        descriptor.value._agentIdPath = options.agentIdPath;
     };
 }
 
@@ -98,14 +96,14 @@ export function hook(args: {
  * Decorator for scheduled jobs
  * @param cron cron expression
  */
-export function job(args: { cron: string; options?: { timezone?: string } }) {
+export function job(cron: string, options: { timezone?: string } = {}) {
     // Validate cron expression
-    if (!validate(args.cron)) {
-        throw new Error(`Invalid cron expression - ${args.cron}`);
+    if (!validate(cron)) {
+        throw new Error(`Invalid cron expression - ${cron}`);
     }
 
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
-        descriptor.value._schedule = args.cron;
-        descriptor.value._options = args.options;
+        descriptor.value._schedule = cron;
+        descriptor.value._options = options;
     };
 }

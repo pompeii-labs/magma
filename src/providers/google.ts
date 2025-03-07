@@ -14,6 +14,7 @@ import {
 import { MAX_RETRIES, Provider } from '.';
 import {
     GoogleProviderConfig,
+    MagmaAssistantMessage,
     MagmaCompletion,
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
@@ -50,6 +51,8 @@ export class GoogleProvider extends Provider {
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
+                    cache_write_tokens: 0,
+                    cache_read_tokens: 0,
                 };
 
                 const streamedToolCalls: {
@@ -67,15 +70,13 @@ export class GoogleProvider extends Provider {
                         id,
                         provider: 'google',
                         model: googleConfig.model,
-                        delta: {
-                            content: [],
-                        },
-                        buffer: {
-                            content: [],
-                        },
+                        delta: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
+                        buffer: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
                         usage: {
                             input_tokens: null,
                             output_tokens: null,
+                            cache_write_tokens: null,
+                            cache_read_tokens: null,
                         },
                         stop_reason: null,
                     };
@@ -87,7 +88,7 @@ export class GoogleProvider extends Provider {
                     }
 
                     if (chunk.text().length > 0) {
-                        magmaStreamChunk.delta.content.push({
+                        magmaStreamChunk.delta.blocks.push({
                             type: 'text',
                             text: chunk.text(),
                         });
@@ -114,14 +115,14 @@ export class GoogleProvider extends Provider {
                     }
 
                     if (contentBuffer.length > 0) {
-                        magmaStreamChunk.buffer.content.push({
+                        magmaStreamChunk.buffer.blocks.push({
                             type: 'text',
                             text: contentBuffer,
                         });
                     }
 
                     for (const toolCall of streamedToolCalls) {
-                        magmaStreamChunk.buffer.content.push({
+                        magmaStreamChunk.buffer.blocks.push({
                             type: 'tool_call',
                             tool_call: {
                                 id: toolCall.id,
@@ -213,6 +214,8 @@ export class GoogleProvider extends Provider {
                     usage: {
                         input_tokens: googleCompletion.response.usageMetadata.promptTokenCount,
                         output_tokens: googleCompletion.response.usageMetadata.candidatesTokenCount,
+                        cache_write_tokens: 0,
+                        cache_read_tokens: 0,
                     },
                     stop_reason:
                         magmaMessage.getToolCalls().length > 0

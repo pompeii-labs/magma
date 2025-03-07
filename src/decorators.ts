@@ -14,11 +14,12 @@ import { validate } from 'node-cron';
  * Decorator to define a tool (optional)
  * @param args name and description for tool
  */
-export function tool(args: { name?: string; description?: string }) {
+export function tool(args: { name?: string; description?: string; cache?: boolean }) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._toolInfo = {
             name: args.name ?? propertyKey,
             description: args.description,
+            cache: args.cache,
         };
     };
 }

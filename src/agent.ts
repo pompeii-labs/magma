@@ -16,6 +16,8 @@ import {
     MagmaToolResultBlock,
     MagmaMessageType,
     MagmaMiddlewareParamType,
+    MagmaSystemMessageType,
+    MagmaSystemMessage,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
@@ -135,7 +137,7 @@ export class MagmaAgent {
         const provider = Provider.factory(this.providerConfig.provider);
 
         const messages = [
-            new MagmaMessage({ role: 'system', content: this.getSystemPrompt() }),
+            ...this.getSystemPrompts().map((s) => new MagmaSystemMessage(s)),
             ...this.getMessages(this.messageContext),
         ];
         if (messages.length > 0 && messages.at(-1).role === 'assistant') {
@@ -258,7 +260,7 @@ export class MagmaAgent {
             const completionConfig: MagmaCompletionConfig = {
                 providerConfig: this.providerConfig,
                 messages: [
-                    new MagmaMessage({ role: 'system', content: this.getSystemPrompt() }),
+                    ...this.getSystemPrompts().map((s) => new MagmaSystemMessage(s)),
                     ...this.getMessages(this.messageContext),
                 ],
                 stream: this.stream,
@@ -720,30 +722,25 @@ export class MagmaAgent {
 
     /* EVENT HANDLERS */
 
-    /**
-     * @deprecated use getSystemPrompt
-     */
-    getSystemPrompts: never;
-
-    getSystemPrompt(): string {
-        return '';
+    getSystemPrompts(): MagmaSystemMessageType[] {
+        return [];
     }
 
-    onError(error: Error): Promise<void> {
+    onError(error: Error): Promise<void> | void {
         throw error;
     }
 
-    onStreamChunk(chunk: MagmaStreamChunk | null): Promise<void> {
+    onStreamChunk(chunk: MagmaStreamChunk | null): Promise<void> | void {
         chunk;
         return;
     }
 
-    onUsageUpdate(usage: object): Promise<void> {
+    onUsageUpdate(usage: object): Promise<void> | void {
         usage;
         return;
     }
 
-    onCleanup(): Promise<void> {
+    onCleanup(): Promise<void> | void {
         return;
     }
 }

@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { MAX_RETRIES, Provider } from '.';
 import {
+    MagmaAssistantMessage,
     MagmaCompletion,
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
@@ -54,6 +55,8 @@ export class OpenAIProvider extends Provider {
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
+                    cache_write_tokens: 0,
+                    cache_read_tokens: 0,
                 };
 
                 let streamedToolCalls: {
@@ -67,15 +70,13 @@ export class OpenAIProvider extends Provider {
                         id: chunk.id,
                         provider: 'openai',
                         model: chunk.model,
-                        delta: {
-                            content: [],
-                        },
-                        buffer: {
-                            content: [],
-                        },
+                        delta: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
+                        buffer: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
                         usage: {
                             input_tokens: null,
                             output_tokens: null,
+                            cache_write_tokens: null,
+                            cache_read_tokens: null,
                         },
                         stop_reason: null,
                     };
@@ -100,11 +101,19 @@ export class OpenAIProvider extends Provider {
                     }
 
                     if (chunk.usage) {
-                        usage.input_tokens = chunk.usage.prompt_tokens;
+                        usage.input_tokens =
+                            chunk.usage.prompt_tokens -
+                            (chunk.usage.prompt_tokens_details.cached_tokens ?? 0);
                         usage.output_tokens = chunk.usage.completion_tokens;
+                        usage.cache_write_tokens =
+                            chunk.usage.prompt_tokens_details.cached_tokens ?? 0;
+                        usage.cache_read_tokens = 0;
                         magmaStreamChunk.usage = {
                             input_tokens: chunk.usage.prompt_tokens,
                             output_tokens: chunk.usage.completion_tokens,
+                            cache_write_tokens:
+                                chunk.usage.prompt_tokens_details.cached_tokens ?? 0,
+                            cache_read_tokens: 0,
                         };
                     }
 
@@ -119,7 +128,7 @@ export class OpenAIProvider extends Provider {
                                 },
                             })
                         );
-                        magmaStreamChunk.delta.content.push(...toolCallBlocks);
+                        magmaStreamChunk.delta.blocks.push(...toolCallBlocks);
                     }
 
                     if (delta?.content) {
@@ -127,7 +136,7 @@ export class OpenAIProvider extends Provider {
                             type: 'text',
                             text: delta.content,
                         };
-                        magmaStreamChunk.delta.content.push(textBlock);
+                        magmaStreamChunk.delta.blocks.push(textBlock);
                         contentBuffer += delta.content;
                     }
 
@@ -136,7 +145,7 @@ export class OpenAIProvider extends Provider {
                             type: 'text',
                             text: contentBuffer,
                         };
-                        magmaStreamChunk.buffer.content.push(bufferTextBlock);
+                        magmaStreamChunk.buffer.blocks.push(bufferTextBlock);
                     }
 
                     if (Object.keys(streamedToolCalls).length > 0) {
@@ -150,7 +159,7 @@ export class OpenAIProvider extends Provider {
                                 fn_args: safeJSON(toolCall.function.arguments),
                             },
                         }));
-                        magmaStreamChunk.buffer.content.push(...bufferToolCallBlocks);
+                        magmaStreamChunk.buffer.blocks.push(...bufferToolCallBlocks);
                     }
 
                     onStreamChunk?.(magmaStreamChunk);
@@ -232,8 +241,13 @@ export class OpenAIProvider extends Provider {
                     model: openAICompletion.model,
                     message: magmaMessage,
                     usage: {
-                        input_tokens: openAICompletion.usage.prompt_tokens,
+                        input_tokens:
+                            openAICompletion.usage.prompt_tokens -
+                            (openAICompletion.usage.prompt_tokens_details.cached_tokens ?? 0),
                         output_tokens: openAICompletion.usage.completion_tokens,
+                        cache_write_tokens: 0,
+                        cache_read_tokens:
+                            openAICompletion.usage.prompt_tokens_details.cached_tokens ?? 0,
                     },
                     stop_reason: this.convertStopReason(choice?.finish_reason),
                 };

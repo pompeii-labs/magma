@@ -19,6 +19,8 @@ export type MagmaCompletion = {
 export type MagmaUsage = {
     input_tokens: number;
     output_tokens: number;
+    cache_write_tokens: number;
+    cache_read_tokens: number;
 };
 
 export type MagmaImageType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/url';
@@ -34,11 +36,12 @@ export type MagmaMessageType =
     | MagmaAssistantMessageType
     | MagmaUserMessageType;
 
-type MagmaSystemMessageType = {
+export type MagmaSystemMessageType = {
     id?: string | number;
     role: 'system';
     blocks?: MagmaContentBlock[];
     content?: string;
+    cache?: boolean;
 };
 
 export type MagmaTextBlock = {
@@ -68,12 +71,15 @@ export type MagmaImageBlock = {
     image: MagmaImage;
 };
 
-export type MagmaContentBlock =
+export type MagmaContentBlock = (
     | MagmaTextBlock
     | MagmaToolCallBlock
     | MagmaToolResultBlock
     | MagmaReasoningBlock
-    | MagmaImageBlock;
+    | MagmaImageBlock
+) & {
+    cache?: boolean;
+};
 
 type MagmaUserMessageType = {
     id?: string | number;
@@ -108,16 +114,14 @@ export type MagmaStreamChunk = {
     id: string;
     provider: MagmaProvider;
     model: string;
-    delta: {
-        content: MagmaContentBlock[];
-    };
-    buffer: {
-        content: MagmaContentBlock[];
-    };
+    delta: MagmaAssistantMessage;
+    buffer: MagmaAssistantMessage;
     stop_reason: MagmaCompletionStopReason;
     usage: {
         input_tokens: number | null;
         output_tokens: number | null;
+        cache_write_tokens: number | null;
+        cache_read_tokens: number | null;
     };
 };
 
@@ -198,5 +202,8 @@ export class MagmaSystemMessage extends MagmaMessage {
     role: 'system';
     constructor(magmaSystemMessage: MagmaSystemMessageType) {
         super(magmaSystemMessage);
+        this.blocks.forEach((block) => {
+            block.cache = magmaSystemMessage.cache;
+        });
     }
 }

@@ -131,6 +131,7 @@ export function loadTools(target: any): MagmaTool[] {
                 name: (method['_toolInfo'] as any).name ?? method['_methodName'],
                 description: (method['_toolInfo'] as any).description ?? undefined,
                 params,
+                cache: (method['_toolInfo'] as any).cache ?? false,
             } as MagmaTool);
         }
     }

@@ -185,21 +185,21 @@ export class MagmaMessage {
 }
 
 export class MagmaUserMessage extends MagmaMessage {
-    role: 'user';
+    role: 'user' = 'user';
     constructor(magmaUserMessage: MagmaUserMessageType) {
         super(magmaUserMessage);
     }
 }
 
 export class MagmaAssistantMessage extends MagmaMessage {
-    role: 'assistant';
+    role: 'assistant' = 'assistant';
     constructor(magmaAssistantMessage: MagmaAssistantMessageType) {
         super(magmaAssistantMessage);
     }
 }
 
 export class MagmaSystemMessage extends MagmaMessage {
-    role: 'system';
+    role: 'system' = 'system';
     constructor(magmaSystemMessage: MagmaSystemMessageType) {
         super(magmaSystemMessage);
         this.blocks.forEach((block) => {

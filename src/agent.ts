@@ -1,22 +1,23 @@
 import {
     MagmaAssistantMessage,
     MagmaMessage,
-    MagmaProvider,
     MagmaProviderConfig,
-    MagmaSystemMessage,
     MagmaTool,
-    MagmaToolCallMessage,
     MagmaMiddleware,
     MagmaMiddlewareTriggerType,
     MagmaState,
     MagmaStreamChunk,
-    MagmaToolResultMessage,
     MagmaToolResult,
     MagmaMiddlewareReturnType,
     MagmaUtilities,
     MagmaHook,
     MagmaJob,
     MagmaCompletionConfig,
+    MagmaToolResultBlock,
+    MagmaMessageType,
+    MagmaMiddlewareParamType,
+    MagmaSystemMessageType,
+    MagmaSystemMessage,
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
@@ -70,10 +71,6 @@ export class MagmaAgent {
         this.middlewareRetries = {};
 
         this.logger?.debug('Agent initialized');
-    }
-
-    public get providerName(): MagmaProvider {
-        return this.providerConfig.provider;
     }
 
     public async setup?(opts?: object): Promise<void> {}
@@ -137,11 +134,16 @@ export class MagmaAgent {
             this.setProviderConfig(config);
         }
 
-        const provider = Provider.factory(this.providerName);
+        const provider = Provider.factory(this.providerConfig.provider);
 
-        const messages = [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)];
-        if (messages.length > 0 && messages.at(-1).role === 'tool_call') {
-            messages.pop();
+        const messages = [
+            ...this.getSystemPrompts().map((s) => new MagmaSystemMessage(s)),
+            ...this.getMessages(this.messageContext),
+        ];
+        if (messages.length > 0 && messages.at(-1).role === 'assistant') {
+            messages[messages.length - 1].blocks = messages[messages.length - 1].blocks.filter(
+                (block) => block.type !== 'tool_call'
+            );
         }
 
         const completionConfig: MagmaCompletionConfig = {
@@ -166,74 +168,52 @@ export class MagmaAgent {
 
         this.onUsageUpdate(completion.usage);
 
-        const call = completion.message as MagmaToolCallMessage;
-
-        let middlewareError = await this.runMiddleware('preToolExecution', call);
+        const call = completion.message;
 
         // If the tool call is not `inConversation`, we just return the result
         if (!args.addToConversation) {
-            if (middlewareError) {
-                return middlewareError.tool_results[0];
+            const toolResults = await this.executeTools(call);
+            return toolResults[0];
+        }
+
+        let modifiedMessage: MagmaMessage;
+        try {
+            modifiedMessage = await this.runMiddleware('onCompletion', completion.message);
+            this.messages.push(modifiedMessage);
+        } catch (error) {
+            if (this.messages.at(-1).role === 'assistant') {
+                this.messages.pop();
             }
 
-            const result = await this.executeTools(call);
+            this.addMessage({
+                role: 'system',
+                content: error.message,
+            });
 
-            middlewareError = await this.runMiddleware('onToolExecution', result);
-
-            if (middlewareError) {
-                return middlewareError.tool_results[0];
-            }
-
-            return result.tool_results[0];
+            return await this.trigger(args, config);
         }
 
-        // If the tool call is `inConversation`, we add the tool call to the messages and continue the conversation
-        this.messages.push(call);
-
-        // This array will identify tool calls that throw errors in tool middleware
-        let rejectedToolCallIds: string[] = [];
-
-        // If there are errors in preToolExecution middleware, add the tool call ids to the rejectedToolCallIds array
-        if (middlewareError) {
-            rejectedToolCallIds.push(...middlewareError.tool_results.map((r) => r.id));
+        if (!modifiedMessage) {
+            throw new Error(
+                `Catastrophic error: failed onCompletion middleware ${kMiddlewareMaxRetries} times`
+            );
         }
 
-        // Filter out the tool calls that threw errors in tool middleware
-        const toolCallMessage: MagmaToolCallMessage = {
-            ...call,
-            tool_calls: call.tool_calls.filter((t) => !rejectedToolCallIds.includes(t.id)),
-        };
+        const toolResults = await this.executeTools(completion.message);
 
-        // Execute the tool calls that didn't throw errors in tool middleware
-        const toolResultMessage = await this.executeTools(toolCallMessage);
-
-        // Recombine with the tool results that threw errors in tool middleware, if any
-        if (middlewareError) {
-            toolResultMessage.tool_results.push(...middlewareError.tool_results);
-        }
-
-        // Reset the rejectedToolCallIds array
-        rejectedToolCallIds = [];
-
-        this.messages.push(toolResultMessage);
-
-        // Run the 'onToolExecution' middleware
-        middlewareError = await this.runMiddleware('onToolExecution', toolResultMessage);
-
-        // If there are errors in onToolExecution middleware, add the tool call ids to the rejectedToolCallIds array
-        if (middlewareError) {
-            rejectedToolCallIds.push(...middlewareError.tool_results.map((r) => r.id));
-
-            // Filter out the tool calls that threw errors in onToolExecution middleware
-            toolResultMessage.tool_results = toolResultMessage.tool_results.filter(
-                (t) => !rejectedToolCallIds.includes(t.id)
+        if (toolResults.length > 0) {
+            this.messages.push(
+                new MagmaMessage({
+                    role: 'user',
+                    blocks: toolResults.map((t) => ({ type: 'tool_result', tool_result: t })),
+                })
             );
 
-            // Recombine with the tool results that threw errors in onToolExecution middleware, if any
-            toolResultMessage.tool_results.push(...middlewareError.tool_results);
+            // Trigger another completion because last message was a tool call
+            return await this.main(config);
         }
 
-        return await this.main(config);
+        return modifiedMessage as MagmaAssistantMessage;
     }
 
     /**
@@ -256,23 +236,24 @@ export class MagmaAgent {
     public async main(config?: MagmaProviderConfig): Promise<MagmaAssistantMessage> {
         try {
             // Call 'preCompletion' middleware
-            if (this.messages.at(-1)?.role === 'user') {
-                const middlewareError = await this.runMiddleware(
-                    'preCompletion',
-                    this.messages.at(-1)
-                );
-                if (middlewareError) {
-                    // If the middleware throws an error, return an assistant message with the error to notify the user
-                    // remove the user message from the messages array
-                    this.messages.pop();
-                    return {
-                        role: 'assistant',
-                        content: middlewareError,
-                    };
-                }
+            const lastMessage = this.messages[this.messages.length - 1];
+            let middlewareResult: MagmaMessage;
+            try {
+                middlewareResult = await this.runMiddleware('preCompletion', lastMessage);
+            } catch (error) {
+                return new MagmaAssistantMessage({
+                    role: 'assistant',
+                    content: error.message,
+                });
             }
 
-            let message: MagmaMessage;
+            if (!middlewareResult) {
+                throw new Error(
+                    `Catastrophic error: failed preCompletion middleware ${kMiddlewareMaxRetries} times`
+                );
+            }
+
+            this.messages[this.messages.length - 1] = middlewareResult;
 
             const startingProviderConfig = this.providerConfig;
 
@@ -280,11 +261,14 @@ export class MagmaAgent {
                 this.setProviderConfig(config);
             }
 
-            const provider = Provider.factory(this.providerName);
+            const provider = Provider.factory(this.providerConfig.provider);
 
             const completionConfig: MagmaCompletionConfig = {
                 providerConfig: this.providerConfig,
-                messages: [...this.getSystemPrompts(), ...this.getMessages(this.messageContext)],
+                messages: [
+                    ...this.getSystemPrompts().map((s) => new MagmaSystemMessage(s)),
+                    ...this.getMessages(this.messageContext),
+                ],
                 stream: this.stream,
                 tools: this.tools,
             };
@@ -303,80 +287,65 @@ export class MagmaAgent {
 
             this.onUsageUpdate(completion.usage);
 
-            message = completion.message;
-
-            this.messages.push(message);
-
-            if (message.role === 'tool_call') {
-                // This array will identify tool calls that throw errors in preToolExecution middleware
-                let rejectedToolCallIds: string[] = [];
-
-                // Run the 'preToolExecution' middleware
-                let middlewareError = await this.runMiddleware('preToolExecution', message);
-
-                if (middlewareError) {
-                    // some tool calls threw errors in preToolExecution middleware, add their ids to the rejectedToolCallIds array
-                    rejectedToolCallIds = middlewareError.tool_results.map((r) => r.id);
+            let modifiedMessage: MagmaMessage;
+            try {
+                modifiedMessage = await this.runMiddleware('onCompletion', completion.message);
+                this.messages.push(modifiedMessage);
+            } catch (error) {
+                if (this.messages.at(-1).role === 'assistant') {
+                    this.messages.pop();
                 }
 
-                // Filter out the tool calls that threw errors in preToolExecution middleware
-                const toolCallMessage: MagmaToolCallMessage = {
-                    ...message,
-                    tool_calls: message.tool_calls.filter(
-                        (t) => !rejectedToolCallIds.includes(t.id)
-                    ),
-                };
+                this.addMessage({
+                    role: 'system',
+                    content: error.message,
+                });
 
-                // Execute the tool calls that didn't throw errors in preToolExecution middleware
-                const toolResultMessage = await this.executeTools(toolCallMessage);
+                return await this.main(config);
+            }
 
-                if (middlewareError) {
-                    // Recombine with the tool results that threw errors in preToolExecution middleware, if any
-                    toolResultMessage.tool_results.push(...middlewareError.tool_results);
-                }
+            if (!modifiedMessage) {
+                throw new Error(
+                    `Catastrophic error: failed onCompletion middleware ${kMiddlewareMaxRetries} times`
+                );
+            }
 
-                this.messages.push(toolResultMessage);
+            const toolResults = await this.executeTools(completion.message);
 
-                // Run the 'onToolExecution' middleware
-                middlewareError = await this.runMiddleware('onToolExecution', toolResultMessage);
-
-                if (middlewareError) {
-                    // some tool calls threw errors in onToolExecution middleware, add their ids to the rejectedToolCallIds array
-                    rejectedToolCallIds = middlewareError.tool_results.map((r) => r.id);
-
-                    // Filter out the tool calls that threw errors in onToolExecution middleware
-                    toolResultMessage.tool_results = toolResultMessage.tool_results.filter(
-                        (t) => !rejectedToolCallIds.includes(t.id)
-                    );
-
-                    // Recombine with the tool results that threw errors in onToolExecution middleware, if any
-                    if (middlewareError) {
-                        toolResultMessage.tool_results.push(...middlewareError.tool_results);
-                    }
-                }
+            if (toolResults.length > 0) {
+                this.messages.push(
+                    new MagmaMessage({
+                        role: 'user',
+                        blocks: toolResults.map((t) => ({ type: 'tool_result', tool_result: t })),
+                    })
+                );
 
                 // Trigger another completion because last message was a tool call
                 return await this.main(config);
-            } else {
-                const middlewareError = await this.runMiddleware('onCompletion', message);
+            }
 
-                if (middlewareError) {
-                    // If the last message is not a user message, remove it to enforce user / assistant alternation
-                    if (this.messages.at(-1).role !== 'user') {
-                        this.messages.pop();
-                    }
-
-                    // Add a system message with all the errors from middleware
-                    this.addMessage({
-                        role: 'system',
-                        content: middlewareError,
-                    });
-
-                    return await this.main();
+            try {
+                modifiedMessage = await this.runMiddleware('onMainFinish', modifiedMessage);
+            } catch (error) {
+                if (this.messages.at(-1).role === 'assistant') {
+                    this.messages.pop();
                 }
 
-                return message as MagmaAssistantMessage;
+                this.addMessage({
+                    role: 'system',
+                    content: error.message,
+                });
+
+                return await this.main(config);
             }
+
+            if (!modifiedMessage) {
+                throw new Error(
+                    `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
+                );
+            }
+
+            return modifiedMessage as MagmaAssistantMessage;
         } catch (error) {
             if (error.name === 'AbortError') {
                 this.logger?.info('Request was aborted');
@@ -430,22 +399,21 @@ export class MagmaAgent {
      * @param content content of the message to store
      * @param role message role (default: user)
      */
-    public addMessage(message: MagmaMessage): void {
-        if ('images' in message) {
-            // Validate images are base64 data, not URLs
-            for (const image of message.images ?? []) {
-                if (
-                    (this.providerName === 'anthropic' || this.providerName === 'google') &&
-                    typeof image === 'string'
-                ) {
-                    if (image.startsWith('http')) {
-                        throw new Error('Image URLs are not supported by Anthropic');
-                    }
-                }
+    public addMessage(message: MagmaMessageType): void {
+        const newMessage = new MagmaMessage(message);
+
+        // Validate images are base64 data, not URLs
+        for (const image of newMessage.getImages()) {
+            if (
+                (this.providerConfig.provider === 'anthropic' ||
+                    this.providerConfig.provider === 'google') &&
+                image.type === 'image/url'
+            ) {
+                throw new Error('Image URLs are not supported by Anthropic');
             }
         }
 
-        this.messages.push(message);
+        this.messages.push(newMessage);
     }
 
     /**
@@ -479,7 +447,7 @@ export class MagmaAgent {
         if (slice === -1) return this.messages;
 
         let messages = this.messages.slice(-slice);
-        if (messages.length && messages.length > 0 && messages.at(0).role === 'tool_result') {
+        if (messages.length && messages.length > 0 && messages.at(0).getToolResults().length > 0) {
             messages = messages.slice(1);
         }
 
@@ -521,142 +489,245 @@ export class MagmaAgent {
      * @param call MagmaToolCall tool call to run
      * @returns completion to continue the conversation
      */
-    private async executeTools(call: MagmaToolCallMessage): Promise<MagmaToolResultMessage> {
-        let toolResultMessage: MagmaToolResultMessage = {
-            role: 'tool_result',
-            tool_results: [],
-        };
-        for (const toolCall of call.tool_calls) {
-            let toolResult: MagmaToolResult;
-            try {
-                const tool = this.tools.find((t) => t.name === toolCall.fn_name);
-                if (!tool)
-                    throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
+    private async executeTools(message: MagmaMessage): Promise<MagmaToolResult[]> {
+        // run preToolExecution middleware
+        let modifiedMessage = await this.runMiddleware('preToolExecution', message);
 
-                const result = await tool.target(toolCall, this.state);
-                if (!result) {
-                    this.logger?.warn(`Tool execution failed for ${toolCall.fn_name}()`);
-
-                    if (this.retryCount >= 3) throw new Error('Tool execution not handled');
-
-                    this.retryCount++;
-                }
-
-                toolResult = {
-                    id: toolCall.id,
-                    result: result,
-                    error: false,
-                    fn_name: toolCall.fn_name,
-                };
-
-                this.retryCount = 0;
-            } catch (error) {
-                const errorMessage = `Tool Execution Failed for ${toolCall.fn_name}() - ${error.message ?? 'Unknown'}`;
-                this.logger?.warn(errorMessage);
-
-                toolResult = {
-                    id: toolCall.id,
-                    result: errorMessage,
-                    error: true,
-                    fn_name: toolCall.fn_name,
-                };
-            } finally {
-                toolResultMessage.tool_results.push(toolResult);
-            }
+        if (!modifiedMessage) {
+            throw new Error(
+                `Catastrophic error: failed preToolExecution middleware ${kMiddlewareMaxRetries} times`
+            );
         }
 
-        return toolResultMessage;
+        let toolResultBlocks: MagmaToolResultBlock[] = [];
+
+        // execute the tool calls that didn't throw errors in preToolExecution middleware
+        for (const toolCall of modifiedMessage.getToolCalls()) {
+            let toolResult: MagmaToolResult;
+
+            if (toolCall.error) {
+                toolResult = {
+                    id: toolCall.id,
+                    fn_name: toolCall.fn_name,
+                    result: toolCall.error,
+                    error: true,
+                };
+            } else {
+                try {
+                    const tool = this.tools.find((t) => t.name === toolCall.fn_name);
+                    if (!tool)
+                        throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
+
+                    const result = await tool.target(toolCall, this.state);
+                    if (!result) {
+                        this.logger?.warn(`Tool execution failed for ${toolCall.fn_name}()`);
+                    }
+
+                    toolResult = {
+                        id: toolCall.id,
+                        result: result,
+                        error: false,
+                        fn_name: toolCall.fn_name,
+                    };
+
+                    this.retryCount = 0;
+                } catch (error) {
+                    const errorMessage = `Tool Execution Failed for ${toolCall.fn_name}() - ${error.message ?? 'Unknown'}`;
+                    this.logger?.warn(errorMessage);
+
+                    toolResult = {
+                        id: toolCall.id,
+                        result: errorMessage,
+                        error: true,
+                        fn_name: toolCall.fn_name,
+                    };
+                }
+            }
+
+            toolResultBlocks.push({
+                type: 'tool_result',
+                tool_result: toolResult,
+            });
+        }
+
+        modifiedMessage = await this.runMiddleware(
+            'onToolExecution',
+            new MagmaMessage({
+                role: 'assistant',
+                blocks: toolResultBlocks,
+            })
+        );
+
+        if (!modifiedMessage) {
+            throw new Error(
+                `Catastrophic error: failed onToolExecution middleware ${kMiddlewareMaxRetries} times`
+            );
+        }
+
+        return modifiedMessage.getToolResults();
     }
 
-    /**
-     * @returns true if there was an error, false otherwise
-     */
     private async runMiddleware<T extends MagmaMiddlewareTriggerType>(
         trigger: T,
         message: MagmaMessage
-    ): Promise<MagmaMiddlewareReturnType<T>> {
+    ): Promise<MagmaMessage | null> {
+        if (message.role === 'system') return message;
+
         // Determine whether there are relevant middleware actions to run
-        let middleware: MagmaMiddleware[] | null;
-        try {
-            middleware = this.middleware.filter((f) => f.trigger === trigger);
-            if (!middleware || middleware.length === 0) return null;
-        } catch (e) {
-            return null;
-        }
+        const middleware = this.middleware.filter((f) => f.trigger === trigger);
+        if (middleware.length === 0) return message;
 
-        // The string array will contain the all error messages from middleware
+        const messageResult: MagmaMessage = new MagmaMessage({
+            role: message.role,
+            blocks: [],
+        });
+
         const middlewareErrors: string[] = [];
-        // The tool result message will contain the tool results that threw errors in tool middleware
-        let middlewareMessage: MagmaToolResultMessage = {
-            role: 'tool_result',
-            tool_results: [],
-        };
 
-        let messagesToProcess: any[] = [message];
-        if (message.role === 'tool_call') {
-            messagesToProcess = message.tool_calls;
-        } else if (message.role === 'tool_result') {
-            messagesToProcess = message.tool_results;
-        }
+        // Run the middleware for each block
+        for (const item of message.blocks) {
+            let middlewarePayload: MagmaMiddlewareParamType<MagmaMiddlewareTriggerType>;
 
-        // Perform each middleware step
-        for (const message of messagesToProcess) {
+            switch (item.type) {
+                case 'text':
+                    // If the middleware is preCompletion and its an assistant message, we skip it
+                    if (trigger === 'preCompletion' && message.role === 'assistant') {
+                        messageResult.blocks.push(item);
+                        continue;
+                    }
+                    // If the middleware is onCompletion and its a user message, we skip it
+                    if (trigger === 'onCompletion' && message.role === 'user') {
+                        messageResult.blocks.push(item);
+                        continue;
+                    }
+
+                    // If the middleware is not preCompletion, onCompletion, or onMainFinish, we skip it
+                    if (
+                        trigger !== 'preCompletion' &&
+                        trigger !== 'onCompletion' &&
+                        trigger !== 'onMainFinish'
+                    ) {
+                        messageResult.blocks.push(item);
+                        continue;
+                    }
+                    middlewarePayload = item.text as MagmaMiddlewareParamType<
+                        'preCompletion' | 'onCompletion' | 'onMainFinish'
+                    >;
+                    break;
+                case 'tool_call':
+                    // If the middleware is not preToolExecution, we skip it
+                    if (trigger !== 'preToolExecution') {
+                        messageResult.blocks.push(item);
+                        continue;
+                    }
+                    middlewarePayload = {
+                        id: item.tool_call.id,
+                        fn_name: item.tool_call.fn_name,
+                        fn_args: item.tool_call.fn_args,
+                    } as MagmaMiddlewareParamType<'preToolExecution'>;
+                    break;
+                case 'tool_result':
+                    // If the middleware is not onToolExecution, we skip it
+                    if (trigger !== 'onToolExecution') {
+                        messageResult.blocks.push(item);
+                        continue;
+                    }
+                    middlewarePayload = {
+                        id: item.tool_result.id,
+                        fn_name: item.tool_result.fn_name,
+                        result: item.tool_result.result,
+                        error: item.tool_result.error,
+                    } as MagmaMiddlewareParamType<'onToolExecution'>;
+                    break;
+                default:
+                    messageResult.blocks.push(item);
+                    continue;
+            }
+
             for (const mdlwr of middleware) {
                 try {
                     // Run middleware target action on payload completion
-                    await mdlwr.action(message, this.state);
+                    const middlewareResult = (await mdlwr.action(
+                        middlewarePayload,
+                        this.state
+                    )) as MagmaMiddlewareReturnType<T>;
+                    if (middlewareResult) {
+                        middlewarePayload = middlewareResult;
+                    }
                 } catch (error) {
                     const mHash = hash(mdlwr.action.toString());
                     this.middlewareRetries[mHash] ??= 0;
                     this.middlewareRetries[mHash] += 1;
+
+                    // Add the error to the middlewareErrors array
+                    middlewareErrors.push(error.message);
 
                     if (this.middlewareRetries[mHash] >= kMiddlewareMaxRetries) {
                         this.logger?.error(
                             `${trigger} middleware failed to recover after ${kMiddlewareMaxRetries} attempts`
                         );
 
-                        delete this.middlewareRetries[mHash];
-                        continue;
-                    }
-
-                    // Add the error to the middlewareErrors array
-                    middlewareErrors.push(error.message);
-                    if (trigger === 'preToolExecution' || trigger === 'onToolExecution') {
-                        // Add the tool result to the middlewareMessage if it threw an error in tool middleware
-                        middlewareMessage.tool_results.push({
-                            id: message.id,
-                            result: error.message,
-                            error: true,
-                            fn_name: message.fn_name,
-                        });
+                        if (mdlwr.critical) {
+                            return null;
+                        } else {
+                            middlewareErrors.pop();
+                            delete this.middlewareRetries[mHash];
+                            continue;
+                        }
                     }
 
                     this.logger?.warn(
-                        `An issue occurred running '${trigger}' middleware - ${error.message ?? 'Unknown'}`
+                        `'${trigger}' middleware threw an error - ${error.message ?? 'Unknown'}`
                     );
                 }
             }
+
+            switch (item.type) {
+                case 'text':
+                    messageResult.blocks.push({
+                        type: 'text',
+                        text: middlewarePayload as MagmaMiddlewareParamType<
+                            'preCompletion' | 'onCompletion' | 'onMainFinish'
+                        >,
+                    });
+                    break;
+                case 'tool_call':
+                    if (middlewareErrors.length > 0) {
+                        (middlewarePayload as MagmaMiddlewareParamType<'preToolExecution'>).error =
+                            middlewareErrors.join('\n');
+                    }
+                    messageResult.blocks.push({
+                        type: 'tool_call',
+                        tool_call:
+                            middlewarePayload as MagmaMiddlewareParamType<'preToolExecution'>,
+                    });
+                    break;
+                case 'tool_result':
+                    if (middlewareErrors.length > 0) {
+                        (middlewarePayload as MagmaMiddlewareParamType<'onToolExecution'>).result =
+                            middlewareErrors.join('\n');
+                        (middlewarePayload as MagmaMiddlewareParamType<'onToolExecution'>).error =
+                            true;
+                    }
+                    messageResult.blocks.push({
+                        type: 'tool_result',
+                        tool_result:
+                            middlewarePayload as MagmaMiddlewareParamType<'onToolExecution'>,
+                    });
+                    break;
+            }
         }
 
-        if (middlewareErrors.length > 0) {
-            switch (trigger) {
-                case 'preCompletion':
-                case 'onCompletion':
-                    // Return the errors so we can handle conversation flow
-                    return middlewareErrors.join('\n') as MagmaMiddlewareReturnType<T>;
-                case 'preToolExecution':
-                case 'onToolExecution':
-                    // Return the tool result message to the user
-                    return middlewareMessage as MagmaMiddlewareReturnType<T>;
-            }
-        } else {
+        if (middlewareErrors.length === 0) {
             // Remove errors for middleware that was just run as everything was OK
             middleware.forEach(
                 (mdlwr) => delete this.middlewareRetries[hash(mdlwr.action.toString())]
             );
-
-            return null;
+        } else if (trigger !== 'preToolExecution' && trigger !== 'onToolExecution') {
+            throw new Error(middlewareErrors.join('\n'));
         }
+
+        return messageResult;
     }
 
     /* GETTERS */
@@ -667,7 +738,7 @@ export class MagmaAgent {
         // Get the constructor of the current instance
         const currentConstructor = Object.getPrototypeOf(this).constructor;
         // Get the static utilities from the current class
-        const childUtilities = currentConstructor.getUtilities();
+        const childUtilities = currentConstructor.getUtilities?.() ?? [];
 
         return [...baseUtilities, ...childUtilities];
     }
@@ -694,46 +765,25 @@ export class MagmaAgent {
 
     /* EVENT HANDLERS */
 
-    getSystemPrompts(): MagmaSystemMessage[] {
+    getSystemPrompts(): MagmaSystemMessageType[] {
         return [];
     }
 
-    onError(error: Error): Promise<void> {
+    onError(error: Error): Promise<void> | void {
         throw error;
     }
 
-    onStreamChunk(chunk: MagmaStreamChunk | null): Promise<void> {
+    onStreamChunk(chunk: MagmaStreamChunk | null): Promise<void> | void {
         chunk;
         return;
     }
 
-    onUsageUpdate(usage: object): Promise<void> {
+    onUsageUpdate(usage: object): Promise<void> | void {
         usage;
         return;
     }
 
-    onCleanup(): Promise<void> {
-        return;
-    }
-
-    onConnect(): Promise<void> {
-        return;
-    }
-
-    onDisconnect(): Promise<void> {
-        return;
-    }
-
-    onAudioChunk(chunk: Buffer): Promise<void> {
-        chunk;
-        return;
-    }
-
-    onAudioCommit(): Promise<void> {
-        return;
-    }
-
-    onAbort(): Promise<void> {
+    onCleanup(): Promise<void> | void {
         return;
     }
 }

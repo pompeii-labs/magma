@@ -4,6 +4,9 @@ import {
     MagmaMiddlewareTriggers,
     HookRequestPath,
     HookRequestLocation,
+    MagmaMiddlewareParamType,
+    MagmaMiddlewareReturnType,
+    MagmaState,
 } from './types';
 import { validate } from 'node-cron';
 
@@ -11,11 +14,12 @@ import { validate } from 'node-cron';
  * Decorator to define a tool (optional)
  * @param args name and description for tool
  */
-export function tool(args: { name?: string; description?: string }) {
+export function tool(args: { name?: string; description?: string; cache?: boolean }) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._toolInfo = {
             name: args.name ?? propertyKey,
             description: args.description,
+            cache: args.cache,
         };
     };
 }
@@ -43,17 +47,33 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
  * Decorator for middleware functions to run during completion chains
  * @param trigger which middleware event should trigger the decorated function
  */
-export function middleware(trigger: MagmaMiddlewareTriggerType) {
-    if (!trigger) {
-        throw new Error('Middleware trigger is required');
-    }
+export function middleware<T extends MagmaMiddlewareTriggerType>(
+    trigger: T,
+    options: { critical?: boolean } = { critical: false }
+) {
+    return function <
+        R extends MagmaMiddlewareReturnType<T> | Promise<MagmaMiddlewareReturnType<T>>,
+    >(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((content?: MagmaMiddlewareParamType<T>, state?: MagmaState) => R) & {
+                _middlewareTrigger?: T;
+                _critical?: boolean;
+            }
+        >
+    ) {
+        if (!trigger) {
+            throw new Error('Middleware trigger is required');
+        }
 
-    if (!MagmaMiddlewareTriggers.includes(trigger)) {
-        throw new Error(`Invalid middleware trigger - ${trigger}`);
-    }
+        if (!MagmaMiddlewareTriggers.includes(trigger)) {
+            throw new Error(`Invalid middleware trigger - ${trigger}`);
+        }
 
-    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._middlewareTrigger = trigger;
+        descriptor.value._critical = options.critical;
+        return descriptor;
     };
 }
 
@@ -62,10 +82,13 @@ export function middleware(trigger: MagmaMiddlewareTriggerType) {
  * @param hookName name of the hook
  * ex: @hook('notification') -> POST /hooks/notification
  */
-export function hook(hookName: string, agentIdPath?: HookRequestPath<HookRequestLocation>) {
+export function hook(
+    hookName: string,
+    options: { agentIdPath?: HookRequestPath<HookRequestLocation> } = {}
+) {
     return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
         descriptor.value._hookName = hookName;
-        descriptor.value._agentIdPath = agentIdPath;
+        descriptor.value._agentIdPath = options.agentIdPath;
     };
 }
 
@@ -73,7 +96,7 @@ export function hook(hookName: string, agentIdPath?: HookRequestPath<HookRequest
  * Decorator for scheduled jobs
  * @param cron cron expression
  */
-export function job(cron: string, options?: { timezone?: string }) {
+export function job(cron: string, options: { timezone?: string } = {}) {
     // Validate cron expression
     if (!validate(cron)) {
         throw new Error(`Invalid cron expression - ${cron}`);

@@ -51,4 +51,5 @@ export type MagmaTool = {
     description: string;
     params: (MagmaToolParam & { key: string; required?: boolean })[];
     target: MagmaToolTarget;
+    cache?: boolean;
 };

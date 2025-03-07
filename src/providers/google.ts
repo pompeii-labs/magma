@@ -4,6 +4,7 @@ import {
     FunctionCallingMode,
     FunctionDeclaration,
     FunctionDeclarationSchema,
+    FunctionResponsePart,
     GoogleGenerativeAI,
     ModelParams,
     Part,
@@ -13,6 +14,7 @@ import {
 import { MAX_RETRIES, Provider } from '.';
 import {
     GoogleProviderConfig,
+    MagmaAssistantMessage,
     MagmaCompletion,
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
@@ -49,6 +51,8 @@ export class GoogleProvider extends Provider {
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
+                    cache_write_tokens: 0,
+                    cache_read_tokens: 0,
                 };
 
                 const streamedToolCalls: {
@@ -66,17 +70,13 @@ export class GoogleProvider extends Provider {
                         id,
                         provider: 'google',
                         model: googleConfig.model,
-                        delta: {
-                            content: null,
-                            tool_calls: null,
-                        },
-                        buffer: {
-                            content: null,
-                            tool_calls: null,
-                        },
+                        delta: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
+                        buffer: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
                         usage: {
                             input_tokens: null,
                             output_tokens: null,
+                            cache_write_tokens: null,
+                            cache_read_tokens: null,
                         },
                         stop_reason: null,
                     };
@@ -88,7 +88,10 @@ export class GoogleProvider extends Provider {
                     }
 
                     if (chunk.text().length > 0) {
-                        magmaStreamChunk.delta.content = chunk.text();
+                        magmaStreamChunk.delta.blocks.push({
+                            type: 'text',
+                            text: chunk.text(),
+                        });
                         contentBuffer += chunk.text();
                     }
 
@@ -112,38 +115,50 @@ export class GoogleProvider extends Provider {
                     }
 
                     if (contentBuffer.length > 0) {
-                        magmaStreamChunk.buffer.content = contentBuffer;
+                        magmaStreamChunk.buffer.blocks.push({
+                            type: 'text',
+                            text: contentBuffer,
+                        });
                     }
 
-                    if (streamedToolCalls.length > 0) {
-                        magmaStreamChunk.buffer.tool_calls = streamedToolCalls.map((toolCall) => ({
-                            id: toolCall.id,
-                            name: toolCall.name,
-                            arguments: JSON.stringify(toolCall.arguments),
-                        }));
+                    for (const toolCall of streamedToolCalls) {
+                        magmaStreamChunk.buffer.blocks.push({
+                            type: 'tool_call',
+                            tool_call: {
+                                id: toolCall.id,
+                                fn_name: toolCall.name,
+                                fn_args: toolCall.arguments,
+                            },
+                        });
                     }
 
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
                 onStreamChunk?.(null);
-                let magmaMessage: MagmaMessage;
-                if (streamedToolCalls.length > 0) {
-                    // Convert the arguments buffer to an object
-                    magmaMessage = {
-                        role: 'tool_call',
-                        tool_calls: streamedToolCalls.map((toolCall) => ({
+                let magmaMessage: MagmaMessage = new MagmaMessage({
+                    role: 'assistant',
+                    blocks: [],
+                });
+
+                for (const toolCall of streamedToolCalls) {
+                    magmaMessage.blocks.push({
+                        type: 'tool_call',
+                        tool_call: {
                             id: toolCall.id,
                             fn_name: toolCall.name,
                             fn_args: toolCall.arguments,
-                        })),
-                    };
-                    if (contentBuffer.length > 0) {
-                        magmaMessage.content = contentBuffer;
-                    }
-                } else {
-                    magmaMessage = { role: 'assistant', content: contentBuffer };
+                        },
+                    });
                 }
+
+                if (contentBuffer.length > 0) {
+                    magmaMessage.blocks.push({
+                        type: 'text',
+                        text: contentBuffer,
+                    });
+                }
+
                 const magmaCompletion: MagmaCompletion = {
                     provider: 'google',
                     model: googleConfig.model,
@@ -161,27 +176,33 @@ export class GoogleProvider extends Provider {
                     }
                 );
 
-                let magmaMessage: MagmaMessage;
+                let magmaMessage: MagmaMessage = new MagmaMessage({
+                    role: 'assistant',
+                    blocks: [],
+                });
 
-                const functionCalls = googleCompletion.response.functionCalls();
+                const functionCalls = googleCompletion.response.functionCalls() ?? [];
                 const text = googleCompletion.response.text();
 
-                if (functionCalls?.length > 0) {
-                    magmaMessage = {
-                        role: 'tool_call',
-                        tool_calls: functionCalls.map((toolCall) => ({
+                for (const toolCall of functionCalls) {
+                    magmaMessage.blocks.push({
+                        type: 'tool_call',
+                        tool_call: {
                             id: crypto.randomUUID(),
                             fn_name: toolCall.name,
                             fn_args: toolCall.args,
-                        })),
-                    };
+                        },
+                    });
+                }
 
-                    if (text?.length > 0) {
-                        magmaMessage.content = text;
-                    }
-                } else if (text?.length > 0) {
-                    magmaMessage = { role: 'assistant', content: text };
-                } else {
+                if (text?.length > 0) {
+                    magmaMessage.blocks.push({
+                        type: 'text',
+                        text,
+                    });
+                }
+
+                if (magmaMessage.blocks.length === 0) {
                     console.log(JSON.stringify(googleCompletion.response, null, 2));
                     throw new Error('Google completion was null');
                 }
@@ -193,9 +214,11 @@ export class GoogleProvider extends Provider {
                     usage: {
                         input_tokens: googleCompletion.response.usageMetadata.promptTokenCount,
                         output_tokens: googleCompletion.response.usageMetadata.candidatesTokenCount,
+                        cache_write_tokens: 0,
+                        cache_read_tokens: 0,
                     },
                     stop_reason:
-                        magmaMessage.role === 'tool_call'
+                        magmaMessage.getToolCalls().length > 0
                             ? 'tool_call'
                             : this.convertStopReason(
                                   googleCompletion.response.candidates[0]?.finishReason
@@ -235,10 +258,12 @@ export class GoogleProvider extends Provider {
                 properties: tool.params,
             };
 
+            const parameters = cleanParam(baseObject, []) as FunctionDeclarationSchema;
+
             googleTools.push({
                 name: tool.name,
                 description: tool.description,
-                parameters: cleanParam(baseObject, []) as FunctionDeclarationSchema,
+                parameters: Object.keys(parameters.properties).length > 0 ? parameters : undefined,
             });
         }
 
@@ -279,7 +304,7 @@ export class GoogleProvider extends Provider {
             toolConfig,
             systemInstruction: config.messages
                 .filter((m) => m.role === 'system')
-                .map((m) => m.content)
+                .map((m) => m.getText())
                 .join('\n'),
             generationConfig: settings,
         };
@@ -298,69 +323,80 @@ export class GoogleProvider extends Provider {
                 case 'system':
                     continue;
                 case 'assistant':
-                    googleMessages.push({
-                        role: 'model',
-                        parts: [{ text: message.content }],
-                    });
-                    break;
-                case 'user':
-                    let parts: Part[] = [{ text: message.content }];
-                    if (message.images) {
-                        const images = Array.isArray(message.images)
-                            ? message.images
-                            : [message.images];
-
-                        for (const image of images) {
-                            // If image is a string, it is a url
-                            if (typeof image === 'string') {
-                                throw new Error('Image URLs are not supported by Google');
-                            } else {
-                                parts.push({
-                                    inlineData: {
-                                        data: image.data,
-                                        mimeType: image.type,
+                    let assistantParts: Part[] = [];
+                    for (const block of message.blocks) {
+                        switch (block.type) {
+                            case 'text':
+                                assistantParts.push({ text: block.text });
+                                break;
+                            case 'tool_call':
+                                assistantParts.push({
+                                    functionCall: {
+                                        name: block.tool_call.fn_name,
+                                        args: block.tool_call.fn_args,
                                     },
                                 });
-                            }
+                                break;
+                            case 'reasoning':
+                                assistantParts.push({
+                                    text: `<thinking>${block.reasoning}</thinking>`,
+                                });
+                                break;
+                            default:
+                                throw new Error(`Unsupported block type: ${block.type}`);
+                        }
+                    }
+                    if (assistantParts.length > 0) {
+                        googleMessages.push({
+                            role: 'model',
+                            parts: assistantParts,
+                        });
+                    }
+                    break;
+                case 'user':
+                    let userParts: Part[] = [];
+                    for (const block of message.blocks) {
+                        switch (block.type) {
+                            case 'text':
+                                userParts.push({ text: block.text });
+                                break;
+                            case 'image':
+                                userParts.push({
+                                    inlineData: {
+                                        data: block.image.data,
+                                        mimeType: block.image.type,
+                                    },
+                                });
+                                break;
+                            case 'tool_result':
+                                const resultPart: FunctionResponsePart = {
+                                    functionResponse: {
+                                        name: block.tool_result.fn_name,
+                                        response: block.tool_result.error
+                                            ? {
+                                                  error: `Something went wrong calling your last tool - \n ${typeof block.tool_result.result !== 'string' ? JSON.stringify(block.tool_result.result) : block.tool_result.result}`,
+                                              }
+                                            : {
+                                                  result:
+                                                      typeof block.tool_result.result !== 'string'
+                                                          ? JSON.stringify(block.tool_result.result)
+                                                          : block.tool_result.result,
+                                              },
+                                    },
+                                };
+                                userParts.push(resultPart);
+                                break;
+                            default:
+                                throw new Error(`Unsupported block type: ${block.type}`);
                         }
                     }
 
-                    googleMessages.push({
-                        role: 'user',
-                        parts,
-                    });
-                    break;
-                case 'tool_call':
-                    const toolCalls = message.tool_calls;
-                    googleMessages.push({
-                        role: 'model',
-                        parts: toolCalls.map((toolCall) => ({
-                            functionCall: {
-                                name: toolCall.fn_name,
-                                args: toolCall.fn_args,
-                            },
-                        })),
-                    });
-                    break;
-                case 'tool_result':
-                    googleMessages.push({
-                        role: 'model',
-                        parts: message.tool_results.map((toolResult) => ({
-                            functionResponse: {
-                                name: toolResult.fn_name,
-                                response: toolResult.error
-                                    ? {
-                                          error: `Something went wrong calling your last tool - \n ${typeof toolResult.result !== 'string' ? JSON.stringify(toolResult.result) : toolResult.result}`,
-                                      }
-                                    : {
-                                          result:
-                                              typeof toolResult.result !== 'string'
-                                                  ? JSON.stringify(toolResult.result)
-                                                  : toolResult.result,
-                                      },
-                            },
-                        })),
-                    });
+                    if (userParts.length > 0) {
+                        googleMessages.push({
+                            role: 'user',
+                            parts: userParts,
+                        });
+                    }
                     break;
             }
         }

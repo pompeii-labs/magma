@@ -2,13 +2,21 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MAX_RETRIES, Provider } from '.';
 import {
     AnthropicProviderConfig,
+    MagmaAssistantMessage,
     MagmaCompletion,
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
+    MagmaContentBlock,
     MagmaMessage,
+    MagmaReasoningBlock,
     MagmaStreamChunk,
+    MagmaSystemMessage,
+    MagmaTextBlock,
     MagmaTool,
+    MagmaToolCall,
+    MagmaToolCallBlock,
     MagmaToolParam,
+    MagmaUsage,
 } from '../types';
 
 import {
@@ -16,12 +24,12 @@ import {
     MessageParam as AnthropicMessageParam,
     Tool as AnthropicTool,
     Message as AnthropicMessage,
-    ImageBlockParam,
-    ToolUseBlock,
     Message,
+    TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
 import { Logger } from '../logger';
 import { cleanParam, sleep } from '../helpers';
+import { safeJSON } from '@anthropic-ai/sdk/core';
 
 export class AnthropicProvider extends Provider {
     static override convertConfig(config: MagmaCompletionConfig): AnthropicConfig {
@@ -45,8 +53,19 @@ export class AnthropicProvider extends Provider {
             tool_choice,
             system: config.messages
                 .filter((m) => m.role === 'system')
-                .map((m) => m.content)
-                .join('\n'),
+                .flatMap((m: MagmaSystemMessage) =>
+                    m.blocks
+                        .filter((b) => b.type === 'text')
+                        .map((b) => {
+                            const textBlock: TextBlockParam = {
+                                type: 'text',
+                                text: b.text,
+                                cache_control: b.cache ? { type: 'ephemeral' } : undefined,
+                            };
+
+                            return textBlock;
+                        })
+                ),
             ...settings,
         };
 
@@ -65,13 +84,63 @@ export class AnthropicProvider extends Provider {
                     continue;
 
                 case 'assistant':
+                    let assistantContent: AnthropicMessageParam['content'] = [];
+
+                    for (const block of message.blocks) {
+                        switch (block.type) {
+                            case 'reasoning':
+                                if (block.redacted) {
+                                    assistantContent.push({
+                                        type: 'redacted_thinking',
+                                        data: block.reasoning,
+                                    });
+                                } else {
+                                    if (!block.signature) {
+                                        assistantContent.push({
+                                            type: 'text',
+                                            text: `<thinking>${block.reasoning}</thinking>`,
+                                        });
+                                    } else {
+                                        assistantContent.push({
+                                            type: 'thinking',
+                                            thinking: block.reasoning,
+                                            signature: block.signature,
+                                        });
+                                    }
+                                }
+                                break;
+                            case 'tool_call':
+                                assistantContent.push({
+                                    type: 'tool_use',
+                                    id: block.tool_call.id,
+                                    name: block.tool_call.fn_name,
+                                    input: block.tool_call.fn_args,
+                                });
+                                break;
+                            case 'text':
+                                assistantContent.push({
+                                    type: 'text',
+                                    text: block.text,
+                                });
+                                break;
+                            default:
+                                throw new Error(
+                                    `Unsupported block type for assistant messages: ${block.type}`
+                                );
+                        }
+                    }
+
                     anthropicMessages.push({
                         role: 'assistant',
-                        content: message.content,
+                        content: assistantContent,
                     });
 
                     // Check if the next message is also from the assistant
-                    if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
+                    if (
+                        i + 1 < messages.length &&
+                        messages[i + 1].role === 'assistant' &&
+                        messages[i].getToolCalls().length === 0
+                    ) {
                         anthropicMessages.push({
                             role: 'user',
                             content: 'Continue.',
@@ -80,68 +149,56 @@ export class AnthropicProvider extends Provider {
                     break;
 
                 case 'user':
-                    let imageContentParts: ImageBlockParam[] = [];
-                    if (message.images) {
-                        const images = Array.isArray(message.images)
-                            ? message.images
-                            : [message.images];
-                        imageContentParts = [];
+                    let userContent: AnthropicMessageParam['content'] = [];
 
-                        for (const image of images) {
-                            if (typeof image === 'string') {
-                                throw new Error('Image URLs are not supported by Anthropic');
-                            } else if (image.type && image.data) {
-                                imageContentParts.push({
-                                    type: 'image',
-                                    source: {
-                                        data: image.data,
-                                        media_type: image.type,
-                                        type: 'base64',
-                                    },
+                    for (const block of message.blocks) {
+                        switch (block.type) {
+                            case 'text':
+                                userContent.push({
+                                    type: 'text',
+                                    text: block.text,
                                 });
-                            }
+                                break;
+                            case 'image':
+                                if (block.image.type === 'image/url') {
+                                    userContent.push({
+                                        type: 'image',
+                                        source: {
+                                            type: 'url',
+                                            url: block.image.data,
+                                        },
+                                    });
+                                } else {
+                                    userContent.push({
+                                        type: 'image',
+                                        source: {
+                                            type: 'base64',
+                                            data: block.image.data,
+                                            media_type: block.image.type,
+                                        },
+                                    });
+                                }
+                                break;
+                            case 'tool_result':
+                                userContent.push({
+                                    type: 'tool_result',
+                                    tool_use_id: block.tool_result.id,
+                                    content:
+                                        typeof block.tool_result.result !== 'string'
+                                            ? JSON.stringify(block.tool_result.result)
+                                            : block.tool_result.result,
+                                });
+                                break;
+                            default:
+                                throw new Error(
+                                    `Unsupported block type for user messages: ${block.type}`
+                                );
                         }
                     }
 
                     anthropicMessages.push({
                         role: 'user',
-                        content:
-                            imageContentParts.length > 0
-                                ? [
-                                      {
-                                          type: 'text',
-                                          text: message.content,
-                                      },
-                                      ...imageContentParts,
-                                  ]
-                                : message.content,
-                    });
-                    break;
-
-                case 'tool_call':
-                    anthropicMessages.push({
-                        role: 'assistant',
-                        content: message.tool_calls.map((toolCall) => ({
-                            type: 'tool_use',
-                            id: toolCall.id,
-                            name: toolCall.fn_name,
-                            input: toolCall.fn_args,
-                        })),
-                    });
-                    break;
-
-                case 'tool_result':
-                    anthropicMessages.push({
-                        role: 'user',
-                        content: message.tool_results.map((toolResult) => ({
-                            type: 'tool_result',
-                            tool_use_id: toolResult.id,
-                            content:
-                                typeof toolResult.result !== 'string'
-                                    ? JSON.stringify(toolResult.result)
-                                    : toolResult.result,
-                            is_error: toolResult.error,
-                        })),
+                        content: userContent,
                     });
                     break;
             }
@@ -177,16 +234,18 @@ export class AnthropicProvider extends Provider {
                     { signal }
                 );
 
-                let contentBuffer = '';
-                const usage: {
-                    input_tokens: number;
-                    output_tokens: number;
-                } = {
+                let blockBuffer: (
+                    | MagmaContentBlock
+                    | (Omit<MagmaToolCallBlock, 'tool_call'> & {
+                          tool_call: Omit<MagmaToolCall, 'fn_args'> & { fn_args: string };
+                      })
+                )[] = [];
+                const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
+                    cache_write_tokens: 0,
+                    cache_read_tokens: 0,
                 };
-
-                let streamedToolCalls: ToolUseBlock[] = [];
 
                 let id = stream._request_id;
 
@@ -197,17 +256,13 @@ export class AnthropicProvider extends Provider {
                         id,
                         provider: 'anthropic',
                         model: anthropicConfig.model,
-                        delta: {
-                            content: null,
-                            tool_calls: null,
-                        },
-                        buffer: {
-                            content: null,
-                            tool_calls: null,
-                        },
+                        delta: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
+                        buffer: new MagmaAssistantMessage({ role: 'assistant', blocks: [] }),
                         usage: {
                             input_tokens: null,
                             output_tokens: null,
+                            cache_write_tokens: null,
+                            cache_read_tokens: null,
                         },
                         stop_reason: null,
                     };
@@ -218,9 +273,16 @@ export class AnthropicProvider extends Provider {
                             magmaStreamChunk.id = id;
                             usage.input_tokens += chunk.message.usage.input_tokens;
                             usage.output_tokens += chunk.message.usage.output_tokens;
+                            usage.cache_write_tokens +=
+                                chunk.message.usage.cache_creation_input_tokens;
+                            usage.cache_read_tokens += chunk.message.usage.cache_read_input_tokens;
                             magmaStreamChunk.usage.input_tokens = chunk.message.usage.input_tokens;
                             magmaStreamChunk.usage.output_tokens =
                                 chunk.message.usage.output_tokens;
+                            magmaStreamChunk.usage.cache_write_tokens =
+                                chunk.message.usage.cache_creation_input_tokens;
+                            magmaStreamChunk.usage.cache_read_tokens =
+                                chunk.message.usage.cache_read_input_tokens;
                             break;
                         case 'message_delta':
                             usage.output_tokens += chunk.usage.output_tokens;
@@ -231,54 +293,114 @@ export class AnthropicProvider extends Provider {
                             }
                             break;
                         case 'content_block_start':
-                            if (chunk.content_block.type === 'tool_use') {
-                                streamedToolCalls.push({
-                                    id: chunk.content_block.id,
-                                    type: 'tool_use',
-                                    name: chunk.content_block.name,
-                                    input: '',
-                                });
-                                magmaStreamChunk.delta.tool_calls = [
-                                    {
-                                        id: chunk.content_block.id,
-                                        name: chunk.content_block.name,
-                                    },
-                                ];
+                            let blockStart:
+                                | MagmaContentBlock
+                                | (Omit<MagmaToolCallBlock, 'tool_call'> & {
+                                      tool_call: Omit<MagmaToolCall, 'fn_args'> & {
+                                          fn_args: string;
+                                      };
+                                  });
+                            switch (chunk.content_block.type) {
+                                case 'text':
+                                    blockStart = {
+                                        type: 'text',
+                                        text: chunk.content_block.text,
+                                    };
+                                    break;
+                                case 'thinking':
+                                    blockStart = {
+                                        type: 'reasoning',
+                                        reasoning: chunk.content_block.thinking,
+                                        signature: chunk.content_block.signature,
+                                    };
+                                    break;
+                                case 'redacted_thinking':
+                                    blockStart = {
+                                        type: 'reasoning',
+                                        reasoning: chunk.content_block.data,
+                                        redacted: true,
+                                    };
+                                    break;
+                                case 'tool_use':
+                                    blockStart = {
+                                        type: 'tool_call',
+                                        tool_call: {
+                                            id: chunk.content_block.id,
+                                            fn_name: chunk.content_block.name,
+                                            fn_args: '',
+                                        },
+                                    };
+                                    break;
                             }
+                            blockBuffer[chunk.index] = blockStart;
+                            magmaStreamChunk.delta.blocks.push(blockStart as MagmaContentBlock);
                             break;
                         case 'content_block_delta':
-                            if (chunk.delta.type === 'text_delta') {
-                                contentBuffer += chunk.delta.text;
-                                magmaStreamChunk.delta.content = chunk.delta.text;
-                            } else if (chunk.delta.type === 'input_json_delta') {
-                                streamedToolCalls.at(-1).input += chunk.delta.partial_json;
-                                magmaStreamChunk.delta.tool_calls = [
-                                    {
-                                        id: streamedToolCalls.at(-1).id,
-                                        arguments: chunk.delta.partial_json,
-                                    },
-                                ];
+                            switch (chunk.delta.type) {
+                                case 'text_delta':
+                                    (blockBuffer[chunk.index] as MagmaTextBlock).text +=
+                                        chunk.delta.text;
+                                    break;
+                                case 'input_json_delta':
+                                    (
+                                        blockBuffer[chunk.index] as Omit<
+                                            MagmaToolCallBlock,
+                                            'tool_call'
+                                        > & {
+                                            tool_call: Omit<MagmaToolCall, 'fn_args'> & {
+                                                fn_args: string;
+                                            };
+                                        }
+                                    ).tool_call.fn_args += chunk.delta.partial_json;
+                                    magmaStreamChunk.delta.blocks.push({
+                                        type: 'tool_call',
+                                        tool_call: {
+                                            id: (blockBuffer[chunk.index] as MagmaToolCallBlock)
+                                                .tool_call.id,
+                                            fn_name: (
+                                                blockBuffer[chunk.index] as MagmaToolCallBlock
+                                            ).tool_call.fn_name,
+                                            fn_args: safeJSON(chunk.delta.partial_json),
+                                        },
+                                    });
+                                    break;
+                                case 'thinking_delta':
+                                    (blockBuffer[chunk.index] as MagmaReasoningBlock).reasoning +=
+                                        chunk.delta.thinking;
+                                    magmaStreamChunk.delta.blocks.push({
+                                        type: 'reasoning',
+                                        reasoning: chunk.delta.thinking,
+                                    });
+                                    break;
+                                case 'signature_delta':
+                                    (blockBuffer[chunk.index] as MagmaReasoningBlock).signature +=
+                                        chunk.delta.signature;
+                                    magmaStreamChunk.delta.blocks.push({
+                                        type: 'reasoning',
+                                        reasoning: '',
+                                        signature: chunk.delta.signature,
+                                    });
+                                    break;
+                                default:
+                                    throw new Error(`Unsupported delta type: ${chunk.delta.type}`);
                             }
                             break;
                         case 'message_stop': {
-                            let magmaMessage: MagmaMessage;
-
-                            if (streamedToolCalls.length > 0) {
-                                magmaMessage = {
-                                    role: 'tool_call',
-                                    tool_calls: streamedToolCalls.map((toolCall) => ({
-                                        id: toolCall.id,
-                                        fn_name: toolCall.name,
-                                        fn_args: JSON.parse(toolCall.input as string),
-                                    })),
-                                    content: contentBuffer,
-                                };
-                            } else {
-                                magmaMessage = {
-                                    role: 'assistant',
-                                    content: contentBuffer,
-                                };
-                            }
+                            let magmaMessage: MagmaMessage = new MagmaMessage({
+                                role: 'assistant',
+                                blocks: blockBuffer.map((b) =>
+                                    b.type === 'tool_call'
+                                        ? {
+                                              type: 'tool_call',
+                                              tool_call: {
+                                                  ...b.tool_call,
+                                                  fn_args:
+                                                      safeJSON(b.tool_call.fn_args as string) ?? {},
+                                              },
+                                          }
+                                        : b
+                                ),
+                            });
 
                             onStreamChunk?.(null);
 
@@ -294,17 +416,17 @@ export class AnthropicProvider extends Provider {
                         }
                     }
 
-                    if (streamedToolCalls.length > 0) {
-                        magmaStreamChunk.buffer.tool_calls = streamedToolCalls.map((toolCall) => ({
-                            id: toolCall.id,
-                            name: toolCall.name,
-                            arguments: toolCall.input as string,
-                        }));
-                    }
-
-                    if (contentBuffer.length > 0) {
-                        magmaStreamChunk.buffer.content = contentBuffer;
-                    }
+                    magmaStreamChunk.buffer.blocks = blockBuffer.map((b) =>
+                        b.type === 'tool_call'
+                            ? {
+                                  type: 'tool_call',
+                                  tool_call: {
+                                      ...b.tool_call,
+                                      fn_args: safeJSON(b.tool_call.fn_args as string) ?? {},
+                                  },
+                              }
+                            : b
+                    );
 
                     onStreamChunk?.(magmaStreamChunk);
                 }
@@ -315,36 +437,51 @@ export class AnthropicProvider extends Provider {
 
                 const blocks = anthropicCompletion.content;
 
-                const content = blocks
-                    .filter((b) => b.type === 'text')
-                    .map((b) => b.text)
-                    .join('\n');
-                const toolCalls = blocks.filter((b) => b.type === 'tool_use');
+                let magmaMessage: MagmaMessage = new MagmaMessage({
+                    role: 'assistant',
+                    blocks: [],
+                });
 
-                let magmaMessage: MagmaMessage;
-                if (content.length === 0 && toolCalls.length === 0) {
-                    throw new Error('Anthropic completion was null');
+                for (const block of blocks) {
+                    switch (block.type) {
+                        case 'text':
+                            magmaMessage.blocks.push({
+                                type: 'text',
+                                text: block.text,
+                            });
+                            break;
+                        case 'tool_use':
+                            magmaMessage.blocks.push({
+                                type: 'tool_call',
+                                tool_call: {
+                                    id: block.id,
+                                    fn_name: block.name,
+                                    fn_args: block.input,
+                                },
+                            });
+                            break;
+                        case 'thinking':
+                            magmaMessage.blocks.push({
+                                type: 'reasoning',
+                                reasoning: block.thinking,
+                                signature: block.signature,
+                            });
+                            break;
+                        case 'redacted_thinking':
+                            magmaMessage.blocks.push({
+                                type: 'reasoning',
+                                reasoning: block.data,
+                                redacted: true,
+                            });
+                            break;
+                        default:
+                            throw new Error(
+                                `Unsupported block type for assistant messages: ${block}`
+                            );
+                    }
                 }
 
-                if (toolCalls.length > 0) {
-                    magmaMessage = {
-                        role: 'tool_call',
-                        tool_calls: toolCalls.map((toolCall) => ({
-                            id: toolCall.id,
-                            fn_name: toolCall.name,
-                            fn_args: toolCall.input,
-                        })),
-                    };
-                    if (content.length > 0) {
-                        magmaMessage.content = content;
-                    }
-                } else if (content.length > 0) {
-                    magmaMessage = {
-                        role: 'assistant',
-                        content,
-                    };
-                } else {
-                    console.log(JSON.stringify(anthropicCompletion, null, 2));
+                if (magmaMessage.blocks.length === 0) {
                     throw new Error('Anthropic completion was null');
                 }
 
@@ -355,6 +492,8 @@ export class AnthropicProvider extends Provider {
                     usage: {
                         input_tokens: anthropicCompletion.usage.input_tokens,
                         output_tokens: anthropicCompletion.usage.output_tokens,
+                        cache_write_tokens: anthropicCompletion.usage.cache_creation_input_tokens,
+                        cache_read_tokens: anthropicCompletion.usage.cache_read_input_tokens,
                     },
                     stop_reason: this.convertStopReason(anthropicCompletion.stop_reason),
                 };
@@ -397,6 +536,7 @@ export class AnthropicProvider extends Provider {
                 input_schema: (tool.params.length === 0
                     ? { type: 'object' }
                     : cleanParam(baseObject, [])) as AnthropicTool.InputSchema,
+                cache_control: tool.cache ? { type: 'ephemeral' } : undefined,
             });
         }
 

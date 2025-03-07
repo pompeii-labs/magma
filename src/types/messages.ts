@@ -203,7 +203,7 @@ export class MagmaSystemMessage extends MagmaMessage {
     constructor(magmaSystemMessage: MagmaSystemMessageType) {
         super(magmaSystemMessage);
         this.blocks.forEach((block) => {
-            block.cache = magmaSystemMessage.cache;
+            block.cache = block.cache ?? magmaSystemMessage.cache;
         });
     }
 }

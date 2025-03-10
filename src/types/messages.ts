@@ -100,6 +100,7 @@ export type MagmaToolCall = {
     id: string;
     fn_name: string;
     fn_args: Record<string, any>;
+    fn_args_buffer?: string;
     error?: string;
 };
 

@@ -328,6 +328,7 @@ export class AnthropicProvider extends Provider {
                                             id: chunk.content_block.id,
                                             fn_name: chunk.content_block.name,
                                             fn_args: '',
+                                            fn_args_buffer: '',
                                         },
                                     };
                                     break;
@@ -396,6 +397,7 @@ export class AnthropicProvider extends Provider {
                                                   ...b.tool_call,
                                                   fn_args:
                                                       safeJSON(b.tool_call.fn_args as string) ?? {},
+                                                  fn_args_buffer: b.tool_call.fn_args as string,
                                               },
                                           }
                                         : b
@@ -423,6 +425,7 @@ export class AnthropicProvider extends Provider {
                                   tool_call: {
                                       ...b.tool_call,
                                       fn_args: safeJSON(b.tool_call.fn_args as string) ?? {},
+                                      fn_args_buffer: b.tool_call.fn_args as string,
                                   },
                               }
                             : b

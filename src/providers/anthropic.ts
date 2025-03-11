@@ -234,12 +234,7 @@ export class AnthropicProvider extends Provider {
                     { signal }
                 );
 
-                let blockBuffer: (
-                    | MagmaContentBlock
-                    | (Omit<MagmaToolCallBlock, 'tool_call'> & {
-                          tool_call: Omit<MagmaToolCall, 'fn_args'> & { fn_args: string };
-                      })
-                )[] = [];
+                let blockBuffer: MagmaContentBlock[] = [];
                 const usage: MagmaUsage = {
                     input_tokens: 0,
                     output_tokens: 0,
@@ -293,13 +288,7 @@ export class AnthropicProvider extends Provider {
                             }
                             break;
                         case 'content_block_start':
-                            let blockStart:
-                                | MagmaContentBlock
-                                | (Omit<MagmaToolCallBlock, 'tool_call'> & {
-                                      tool_call: Omit<MagmaToolCall, 'fn_args'> & {
-                                          fn_args: string;
-                                      };
-                                  });
+                            let blockStart: MagmaContentBlock;
                             switch (chunk.content_block.type) {
                                 case 'text':
                                     blockStart = {
@@ -327,7 +316,7 @@ export class AnthropicProvider extends Provider {
                                         tool_call: {
                                             id: chunk.content_block.id,
                                             fn_name: chunk.content_block.name,
-                                            fn_args: '',
+                                            fn_args: {},
                                             fn_args_buffer: '',
                                         },
                                     };
@@ -337,45 +326,37 @@ export class AnthropicProvider extends Provider {
                             magmaStreamChunk.delta.blocks.push(blockStart as MagmaContentBlock);
                             break;
                         case 'content_block_delta':
+                            let blockToChange: MagmaContentBlock = blockBuffer[chunk.index];
                             switch (chunk.delta.type) {
                                 case 'text_delta':
-                                    (blockBuffer[chunk.index] as MagmaTextBlock).text +=
-                                        chunk.delta.text;
+                                    blockToChange = blockBuffer[chunk.index] as MagmaTextBlock;
+                                    blockToChange.text += chunk.delta.text;
                                     break;
                                 case 'input_json_delta':
-                                    (
-                                        blockBuffer[chunk.index] as Omit<
-                                            MagmaToolCallBlock,
-                                            'tool_call'
-                                        > & {
-                                            tool_call: Omit<MagmaToolCall, 'fn_args'> & {
-                                                fn_args: string;
-                                            };
-                                        }
-                                    ).tool_call.fn_args += chunk.delta.partial_json;
+                                    blockToChange = blockBuffer[chunk.index] as MagmaToolCallBlock;
+                                    blockToChange.tool_call.fn_args_buffer +=
+                                        chunk.delta.partial_json;
                                     magmaStreamChunk.delta.blocks.push({
                                         type: 'tool_call',
                                         tool_call: {
-                                            id: (blockBuffer[chunk.index] as MagmaToolCallBlock)
-                                                .tool_call.id,
-                                            fn_name: (
-                                                blockBuffer[chunk.index] as MagmaToolCallBlock
-                                            ).tool_call.fn_name,
-                                            fn_args: safeJSON(chunk.delta.partial_json),
+                                            id: blockToChange.tool_call.id,
+                                            fn_name: blockToChange.tool_call.fn_name,
+                                            fn_args: safeJSON(chunk.delta.partial_json) ?? {},
+                                            fn_args_buffer: chunk.delta.partial_json,
                                         },
                                     });
                                     break;
                                 case 'thinking_delta':
-                                    (blockBuffer[chunk.index] as MagmaReasoningBlock).reasoning +=
-                                        chunk.delta.thinking;
+                                    blockToChange = blockBuffer[chunk.index] as MagmaReasoningBlock;
+                                    blockToChange.reasoning += chunk.delta.thinking;
                                     magmaStreamChunk.delta.blocks.push({
                                         type: 'reasoning',
                                         reasoning: chunk.delta.thinking,
                                     });
                                     break;
                                 case 'signature_delta':
-                                    (blockBuffer[chunk.index] as MagmaReasoningBlock).signature +=
-                                        chunk.delta.signature;
+                                    blockToChange = blockBuffer[chunk.index] as MagmaReasoningBlock;
+                                    blockToChange.signature += chunk.delta.signature;
                                     magmaStreamChunk.delta.blocks.push({
                                         type: 'reasoning',
                                         reasoning: '',
@@ -396,15 +377,13 @@ export class AnthropicProvider extends Provider {
                                               tool_call: {
                                                   ...b.tool_call,
                                                   fn_args:
-                                                      safeJSON(b.tool_call.fn_args as string) ?? {},
-                                                  fn_args_buffer: b.tool_call.fn_args as string,
+                                                      safeJSON(b.tool_call.fn_args_buffer) ?? {},
+                                                  fn_args_buffer: b.tool_call.fn_args_buffer,
                                               },
                                           }
                                         : b
                                 ),
                             });
-
-                            onStreamChunk?.(null);
 
                             const magmaCompletion: MagmaCompletion = {
                                 provider: 'anthropic',
@@ -424,8 +403,8 @@ export class AnthropicProvider extends Provider {
                                   type: 'tool_call',
                                   tool_call: {
                                       ...b.tool_call,
-                                      fn_args: safeJSON(b.tool_call.fn_args as string) ?? {},
-                                      fn_args_buffer: b.tool_call.fn_args as string,
+                                      fn_args: safeJSON(b.tool_call.fn_args_buffer) ?? {},
+                                      fn_args_buffer: b.tool_call.fn_args_buffer,
                                   },
                               }
                             : b
@@ -485,6 +464,7 @@ export class AnthropicProvider extends Provider {
                 }
 
                 if (magmaMessage.blocks.length === 0) {
+                    console.log(JSON.stringify(anthropicCompletion, null, 2));
                     throw new Error('Anthropic completion was null');
                 }
 

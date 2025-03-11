@@ -57,8 +57,9 @@ export class GoogleProvider extends Provider {
 
                 const streamedToolCalls: {
                     id: string;
-                    name: string;
-                    arguments: Record<string, any>;
+                    fn_name: string;
+                    fn_args: Record<string, any>;
+                    fn_args_buffer: string;
                 }[] = [];
 
                 let id = crypto.randomUUID();
@@ -99,8 +100,9 @@ export class GoogleProvider extends Provider {
                         for (const toolCall of chunk.functionCalls()) {
                             streamedToolCalls.push({
                                 id: crypto.randomUUID(),
-                                name: toolCall.name,
-                                arguments: toolCall.args,
+                                fn_name: toolCall.name,
+                                fn_args: toolCall.args,
+                                fn_args_buffer: JSON.stringify(toolCall.args),
                             });
                         }
                     }
@@ -126,8 +128,9 @@ export class GoogleProvider extends Provider {
                             type: 'tool_call',
                             tool_call: {
                                 id: toolCall.id,
-                                fn_name: toolCall.name,
-                                fn_args: toolCall.arguments,
+                                fn_name: toolCall.fn_name,
+                                fn_args: toolCall.fn_args,
+                                fn_args_buffer: toolCall.fn_args_buffer,
                             },
                         });
                     }
@@ -135,7 +138,6 @@ export class GoogleProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                onStreamChunk?.(null);
                 let magmaMessage: MagmaMessage = new MagmaMessage({
                     role: 'assistant',
                     blocks: [],
@@ -146,8 +148,9 @@ export class GoogleProvider extends Provider {
                         type: 'tool_call',
                         tool_call: {
                             id: toolCall.id,
-                            fn_name: toolCall.name,
-                            fn_args: toolCall.arguments,
+                            fn_name: toolCall.fn_name,
+                            fn_args: toolCall.fn_args,
+                            fn_args_buffer: toolCall.fn_args_buffer,
                         },
                     });
                 }

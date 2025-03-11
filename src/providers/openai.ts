@@ -124,7 +124,8 @@ export class OpenAIProvider extends Provider {
                                 tool_call: {
                                     id: streamedToolCalls[toolCall.index].id,
                                     fn_name: toolCall.function.name,
-                                    fn_args: safeJSON(toolCall.function.arguments),
+                                    fn_args: safeJSON(toolCall.function.arguments) ?? {},
+                                    fn_args_buffer: toolCall.function.arguments,
                                 },
                             })
                         );
@@ -156,7 +157,8 @@ export class OpenAIProvider extends Provider {
                             tool_call: {
                                 id: toolCall.id,
                                 fn_name: toolCall.function.name,
-                                fn_args: safeJSON(toolCall.function.arguments),
+                                fn_args: safeJSON(toolCall.function.arguments) ?? {},
+                                fn_args_buffer: toolCall.function.arguments,
                             },
                         }));
                         magmaStreamChunk.buffer.blocks.push(...bufferToolCallBlocks);
@@ -181,7 +183,8 @@ export class OpenAIProvider extends Provider {
                         tool_call: {
                             id: toolCall.id,
                             fn_name: toolCall.function.name,
-                            fn_args: safeJSON(toolCall.function.arguments),
+                            fn_args: safeJSON(toolCall.function.arguments) ?? {},
+                            fn_args_buffer: toolCall.function.arguments,
                         },
                     }));
                     magmaMessage.blocks.push(...toolCallBlocks);
@@ -224,7 +227,8 @@ export class OpenAIProvider extends Provider {
                             tool_call: {
                                 id: tool_call.id,
                                 fn_name: tool_call.function.name,
-                                fn_args: JSON.parse(tool_call.function.arguments),
+                                fn_args: safeJSON(tool_call.function.arguments) ?? {},
+                                fn_args_buffer: tool_call.function.arguments,
                             },
                         })
                     );

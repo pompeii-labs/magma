@@ -61,6 +61,7 @@ export class MagmaAgent {
             provider: args.provider,
             model: args.model,
             settings: args.settings,
+            client: args.client,
         } as MagmaProviderConfig;
 
         this.setProviderConfig(providerConfig);

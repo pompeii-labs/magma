@@ -103,16 +103,16 @@ export class OpenAIProvider extends Provider {
                     if (chunk.usage) {
                         usage.input_tokens =
                             chunk.usage.prompt_tokens -
-                            (chunk.usage.prompt_tokens_details.cached_tokens ?? 0);
+                            (chunk.usage.prompt_tokens_details?.cached_tokens ?? 0);
                         usage.output_tokens = chunk.usage.completion_tokens;
                         usage.cache_write_tokens =
-                            chunk.usage.prompt_tokens_details.cached_tokens ?? 0;
+                            chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
                         usage.cache_read_tokens = 0;
                         magmaStreamChunk.usage = {
                             input_tokens: chunk.usage.prompt_tokens,
                             output_tokens: chunk.usage.completion_tokens,
                             cache_write_tokens:
-                                chunk.usage.prompt_tokens_details.cached_tokens ?? 0,
+                                chunk.usage.prompt_tokens_details?.cached_tokens ?? 0,
                             cache_read_tokens: 0,
                         };
                     }
@@ -247,11 +247,11 @@ export class OpenAIProvider extends Provider {
                     usage: {
                         input_tokens:
                             openAICompletion.usage.prompt_tokens -
-                            (openAICompletion.usage.prompt_tokens_details.cached_tokens ?? 0),
+                            (openAICompletion.usage.prompt_tokens_details?.cached_tokens ?? 0),
                         output_tokens: openAICompletion.usage.completion_tokens,
                         cache_write_tokens: 0,
                         cache_read_tokens:
-                            openAICompletion.usage.prompt_tokens_details.cached_tokens ?? 0,
+                            openAICompletion.usage.prompt_tokens_details?.cached_tokens ?? 0,
                     },
                     stop_reason: this.convertStopReason(choice?.finish_reason),
                 };

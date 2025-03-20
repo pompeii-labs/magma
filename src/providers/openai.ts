@@ -337,7 +337,14 @@ export class OpenAIProvider extends Provider {
                 case 'system':
                     openAIMessages.push({
                         role: 'system',
-                        content: message.getText(),
+                        content: message.blocks.map(
+                            (b) =>
+                                ({
+                                    type: 'text',
+                                    text: message.getText(),
+                                    cache_control: b.cache ? { type: 'ephemeral' } : undefined,
+                                }) as any
+                        ),
                     });
                     break;
                 case 'assistant':

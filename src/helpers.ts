@@ -124,14 +124,14 @@ export function loadTools(target: any): MagmaTool[] {
     const methods = [...staticMethods, ...instanceMethods];
 
     for (const method of methods) {
-        if (typeof method === 'function' && '_toolInfo' in method) {
+        if (typeof method === 'function' && ('_toolInfo' in method || '_parameterInfo' in method)) {
             const params: MagmaToolParam[] = method['_parameterInfo'] ?? [];
             tools.push({
                 target: wrapEventHandler('tool', method, target).bind(target),
-                name: (method['_toolInfo'] as any).name ?? method['_methodName'],
-                description: (method['_toolInfo'] as any).description ?? undefined,
+                name: (method['_toolInfo'] as any)?.name ?? method['_methodName'],
+                description: (method['_toolInfo'] as any)?.description ?? undefined,
                 params,
-                cache: (method['_toolInfo'] as any).cache ?? false,
+                cache: (method['_toolInfo'] as any)?.cache ?? false,
             } as MagmaTool);
         }
     }

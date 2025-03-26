@@ -39,7 +39,7 @@
     "dev": "tsup --watch"
   },
   "devDependencies": {
-    "@swc/core": "^1.4.0",
+    "@swc/core": "^1.5.1",
     "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^6.21.0",

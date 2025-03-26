@@ -20,10 +20,34 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm install
       - run: npm run build --if-present
-      - run: npm publish
+      
+      # Get branch name
+      - name: Get branch name
+        id: branch-name
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+      
+      # For release/* branches, update version and publish with tag
+      - name: Update version for release branches
+        if: startsWith(github.ref, 'refs/heads/release/')
+        run: |
+          BRANCH="${{ steps.branch-name.outputs.branch }}"
+          BRANCH_SLUG=$(echo $BRANCH | sed 's/\//-/g')
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          NEW_VERSION="${CURRENT_VERSION}-${BRANCH_SLUG}.$(date +'%Y%m%d%H%M%S')"
+          npm version $NEW_VERSION --no-git-tag-version
+          echo "Publishing version: $NEW_VERSION with tag ${BRANCH_SLUG}"
+          npm publish --tag ${BRANCH_SLUG}
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
-
+      
+      # For main branch, publish normally
+      - name: Publish main branch
+        if: github.ref == 'refs/heads/main'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
 
       - name: Successful Deployment Notification
         if: success() && !contains(github.event.head_commit.message, '[no-notify]')

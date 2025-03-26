@@ -43,6 +43,7 @@ export class MagmaAgent {
     private middlewareRetries: Record<number, number>;
     private messageContext: number;
     private abortController: AbortController | null = null;
+    private scheduledJobs: cron.ScheduledTask[];
 
     constructor(args?: AgentProps) {
         this.messageContext = args?.messageContext ?? 20;
@@ -66,6 +67,8 @@ export class MagmaAgent {
         this.messages = [];
         this.retryCount = 0;
         this.middlewareRetries = {};
+
+        this.scheduledJobs = [];
 
         this.logger?.debug('Agent initialized');
     }
@@ -98,6 +101,12 @@ export class MagmaAgent {
         this.abortController = null;
 
         this.messages = [];
+
+        for (const scheduledJob of this.scheduledJobs) {
+            scheduledJob.stop();
+        }
+
+        this.scheduledJobs = [];
 
         this.logger?.debug('Agent cleanup complete');
     }
@@ -476,7 +485,7 @@ export class MagmaAgent {
                 this.logger?.info(
                     `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
                 );
-            cron.schedule(job.schedule, job.handler.bind(this), job.options);
+            this.scheduledJobs.push(cron.schedule(job.schedule, job.handler.bind(this), job.options));
         }
     }
 

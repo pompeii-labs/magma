@@ -5,7 +5,6 @@ import {
     MagmaTool,
     MagmaMiddleware,
     MagmaMiddlewareTriggerType,
-    MagmaState,
     MagmaStreamChunk,
     MagmaToolResult,
     MagmaMiddlewareReturnType,
@@ -21,7 +20,7 @@ import {
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash, loadUtilities } from './helpers';
+import { hash, loadHooks, loadJobs, loadMiddleware, loadTools, loadUtilities } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
@@ -36,9 +35,7 @@ type AgentProps = MagmaProviderConfig & {
 };
 
 export class MagmaAgent {
-    id?: string;
     logger?: MagmaLogger;
-    state: MagmaState;
     stream: boolean = false;
     private providerConfig: MagmaProviderConfig;
     private retryCount: number;
@@ -66,7 +63,6 @@ export class MagmaAgent {
 
         this.setProviderConfig(providerConfig);
 
-        this.state = new Map();
         this.messages = [];
         this.retryCount = 0;
         this.middlewareRetries = {};
@@ -519,7 +515,7 @@ export class MagmaAgent {
                     if (!tool)
                         throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
 
-                    const result = await tool.target(toolCall, this.state);
+                    const result = await tool.target(toolCall, this);
                     if (!result) {
                         this.logger?.warn(`Tool execution failed for ${toolCall.fn_name}()`);
                     }
@@ -650,7 +646,7 @@ export class MagmaAgent {
                     // Run middleware target action on payload completion
                     const middlewareResult = (await mdlwr.action(
                         middlewarePayload,
-                        this.state
+                        this
                     )) as MagmaMiddlewareReturnType<T>;
                     if (middlewareResult) {
                         middlewarePayload = middlewareResult;
@@ -734,34 +730,57 @@ export class MagmaAgent {
     /* GETTERS */
 
     public get utilities(): MagmaUtilities[] {
-        // Get the utilities from the current instance
-        const baseUtilities = [loadUtilities(this)];
-        // Get the constructor of the current instance
-        const currentConstructor = Object.getPrototypeOf(this).constructor;
-        // Get the static utilities from the current class
-        const childUtilities = currentConstructor.getUtilities?.() ?? [];
+        const loadedUtilities = this.getUtilities();
 
-        return [...baseUtilities, ...childUtilities];
+        return loadedUtilities;
     }
 
-    public static getUtilities(): MagmaUtilities[] {
+    public getUtilities(): MagmaUtilities[] {
+        return [];
+    }
+
+    public getTools(): MagmaTool[] {
+        return [];
+    }
+
+    public getMiddleware(): MagmaMiddleware[] {
+        return [];
+    }
+
+    public getHooks(): MagmaHook[] {
+        return [];
+    }
+
+    public getJobs(): MagmaJob[] {
         return [];
     }
 
     public get tools(): MagmaTool[] {
-        return this.utilities.flatMap((u) => u.tools.filter(Boolean));
+        const agentTools = loadTools(this);
+        const loadedTools = this.getTools();
+        const utilityTools = this.utilities.flatMap(u => u.tools.filter(Boolean));
+        return agentTools.concat(loadedTools).concat(utilityTools);
     }
 
     public get middleware(): MagmaMiddleware[] {
-        return this.utilities.flatMap((u) => u.middleware.filter(Boolean));
+        const agentMiddleware = loadMiddleware(this);
+        const loadedMiddleware = this.getMiddleware();
+        const utilityMiddleware = this.utilities.flatMap(u => u.middleware.filter(Boolean));
+        return agentMiddleware.concat(loadedMiddleware).concat(utilityMiddleware);
     }
 
     public get hooks(): MagmaHook[] {
-        return this.utilities.flatMap((u) => u.hooks.filter(Boolean));
+        const agentHooks = loadHooks(this);
+        const loadedHooks = this.getHooks();
+        const utilityHooks = this.utilities.flatMap(u => u.hooks.filter(Boolean));
+        return agentHooks.concat(loadedHooks).concat(utilityHooks);
     }
 
     public get jobs(): MagmaJob[] {
-        return this.utilities.flatMap((u) => u.jobs.filter(Boolean));
+        const agentJobs = loadJobs(this);
+        const loadedJobs = this.getJobs();
+        const utilityJobs = this.utilities.flatMap(u => u.jobs.filter(Boolean));
+        return agentJobs.concat(loadedJobs).concat(utilityJobs);
     }
 
     /* EVENT HANDLERS */

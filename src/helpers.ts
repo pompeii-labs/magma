@@ -103,7 +103,11 @@ function wrapEventHandler(
     const originalHandler = method.bind(target);
     const wrappedHandler = async (...args: any[]) => {
         try {
-            await target.onEvent?.(type, methodName, ...(type === 'hook' ? [] : args));
+            await target.onEvent?.(
+                type,
+                methodName,
+                ...(type === 'hook' ? [] : args.slice(0, args.length - 1))
+            );
         } catch {}
 
         return await originalHandler(...args);
@@ -156,7 +160,7 @@ export function loadHooks(target: any): MagmaHook[] {
             hooks.push({
                 name: method['_hookName'],
                 handler: wrapEventHandler('hook', method, target).bind(target),
-                agentIdPath: method['_agentIdPath'],
+                session: method['_session'],
             } as MagmaHook);
         }
     }

@@ -243,6 +243,7 @@ export class MagmaAgent {
         try {
             // Call 'preCompletion' middleware
             const lastMessage = this.messages[this.messages.length - 1];
+            if (!lastMessage) throw new Error('Cannot generate message without input');
             let middlewareResult: MagmaMessage;
             try {
                 middlewareResult = await this.runMiddleware('preCompletion', lastMessage);

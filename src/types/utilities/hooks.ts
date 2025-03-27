@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { MagmaAgent } from '../../agent';
 
-export function getSessionFromHookRequest(request: Request, path?: string): any {
+export function extractPathFromHookRequest(request: Request, path?: string): any {
     if (!path) return undefined;
 
     if (!path.includes('.')) return path;

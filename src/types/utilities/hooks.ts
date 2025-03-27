@@ -15,5 +15,8 @@ export type MagmaHook = {
     handler: (request: Request, response: Response, agent: MagmaAgent) => Promise<void>;
     session?:
         | { path: string; id?: undefined }
-        | { path?: undefined; id: 'default' | (string & {}) };
+        | {
+              path?: undefined;
+              id: 'default' | (string & {}) | ((req: Request) => string | Promise<string>);
+          };
 };

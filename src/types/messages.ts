@@ -1,4 +1,5 @@
 import { MagmaProvider } from './providers';
+import { MagmaToolReturnType } from './utilities';
 
 export type MagmaCompletionStopReason =
     | 'natural'
@@ -106,7 +107,7 @@ export type MagmaToolCall = {
 
 export type MagmaToolResult = {
     id: string;
-    result: string | Record<string, any>;
+    result: MagmaToolReturnType;
     error?: boolean;
     fn_name: string;
 };

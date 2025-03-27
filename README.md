@@ -225,36 +225,28 @@ class Agent extends MagmaAgent {
 ```
 
 ### State Management
-Every agent has a state object that you can use to store data. You can store any data type, and it will be persisted between calls.
-You can also choose to use fields on the agent class to store data.
-
-State does not get passed into LLM calls, so it's a good place to store data that you want to persist between calls / sensitive data.
+Every Tool, Middleware, Hook, and Job is passed the instance of the agent. This allows you to manipulate agent state and call agent functions in Utility classes
 
 ```ts
 class MyAgent extends MagmaAgent {
     // Using a field to store data
-    myQuery = "Hello, world!";
+    myQuery: string;
+    counter: number;
 
     async setup() {
-        // Initialize state
-        this.state.set("counter", 0);
-        this.state.set("access_token", "1234567890");
+        this.myQuery = "Hello, World!";
+        this.counter = 0;
     }
 
-    @tool({ name: "increment" })
+    @tool({ description: "Increment the counter" })
     async increment() {
-        const counter = this.state.get("counter") || 0;
-        this.state.set("counter", counter + 1);
-        return `Counter is now ${counter + 1}`;
+        this.counter++;
+        return `Counter is now ${this.counter}`;
     }
 
     @tool({ name: "api_call" })
     async apiCall() {
-        const access_token = this.state.get("access_token");
         const response = await fetch("https://myapi.com/data", {
-            headers: {
-                "Authorization": `Bearer ${access_token}`
-            },
             body: JSON.stringify({
                 query: this.myQuery
             })

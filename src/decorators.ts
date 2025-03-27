@@ -1,12 +1,14 @@
+import { Request, Response } from 'express';
+import { MagmaAgent } from './agent';
 import {
     MagmaToolParam,
     MagmaMiddlewareTriggerType,
     MagmaMiddlewareTriggers,
-    HookRequestPath,
-    HookRequestLocation,
     MagmaMiddlewareParamType,
     MagmaMiddlewareReturnType,
-    MagmaState,
+    MagmaToolCall,
+    MagmaToolReturnType,
+    MagmaHook,
 } from './types';
 import { validate } from 'node-cron';
 
@@ -15,7 +17,15 @@ import { validate } from 'node-cron';
  * @param args name and description for tool
  */
 export function tool(args: { name?: string; description?: string; cache?: boolean }) {
-    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+    return function <R extends MagmaToolReturnType | Promise<MagmaToolReturnType>>(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((call: MagmaToolCall, agent: MagmaAgent) => R) & {
+                _toolInfo?: { name?: string; description?: string; cache?: boolean };
+            }
+        >
+    ) {
         descriptor.value._toolInfo = {
             name: args.name ?? propertyKey,
             description: args.description,
@@ -32,7 +42,16 @@ export function tool(args: { name?: string; description?: string; cache?: boolea
  * @param required whether the parameter is required or not
  */
 export function toolparam(args: MagmaToolParam & { key: string; required?: boolean }) {
-    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+    return function <R extends MagmaToolReturnType | Promise<MagmaToolReturnType>>(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((call: MagmaToolCall, agent: MagmaAgent) => R) & {
+                _methodName?: string;
+                _parameterInfo?: (MagmaToolParam & { key: string; required?: boolean })[];
+            }
+        >
+    ) {
         // Ensure metadata exists on this method's prototype
         if (!descriptor.value._methodName) {
             descriptor.value._methodName = propertyKey;
@@ -57,7 +76,7 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((content?: MagmaMiddlewareParamType<T>, state?: MagmaState) => R) & {
+            ((content?: MagmaMiddlewareParamType<T>, agent?: MagmaAgent) => R) & {
                 _middlewareTrigger?: T;
                 _critical?: boolean;
             }
@@ -80,21 +99,35 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
 /**
  * Decorator for webhook functions
  * @param hookName name of the hook
- * ex: @hook('notification') -> POST /hooks/notification
+ * @param options configuration options for the hook
+ * @param options.session session configuration for the hook
+ * Examples:
+ * @hook('notification') -> POST /hooks/notification
+ * @hook('notification', { session: 'default' })
+ * @hook('notification', { session: (req) => req.body.userId })
+ * @hook('notification', { session: fetchFromExternal(req) })
  */
-export function hook(
-    hookName: string,
-    options: { agentIdPath?: HookRequestPath<HookRequestLocation> } = {}
-) {
-    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+export function hook(hookName: string, options: { session?: MagmaHook['session'] } = {}) {
+    return function <R extends void>(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((req: Request, res: Response, agent?: MagmaAgent) => R) & {
+                _hookName?: string;
+                _session?: MagmaHook['session'];
+            }
+        >
+    ) {
         descriptor.value._hookName = hookName;
-        descriptor.value._agentIdPath = options.agentIdPath;
+        descriptor.value._session = options.session;
     };
 }
 
 /**
  * Decorator for scheduled jobs
- * @param cron cron expression
+ * @param cron cron expression (https://www.npmjs.com/package/node-cron#cron-syntax)
+ * @param options configuration options for the job
+ * @param options.timezone set the timezone for the job schedule
  */
 export function job(cron: string, options: { timezone?: string } = {}) {
     // Validate cron expression
@@ -102,7 +135,13 @@ export function job(cron: string, options: { timezone?: string } = {}) {
         throw new Error(`Invalid cron expression - ${cron}`);
     }
 
-    return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+    return function <R extends void>(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((agent?: MagmaAgent) => R) & { _schedule?: string; _options?: { timezone?: string } }
+        >
+    ) {
         descriptor.value._schedule = cron;
         descriptor.value._options = options;
     };

@@ -1,6 +1,6 @@
 {
   "name": "@pompeii-labs/magma",
-  "version": "1.4.6",
+  "version": "1.5.2",
   "description": "The Typescript framework to build AI agents quickly and easily",
   "keywords": [
     "Agents",
@@ -57,6 +57,7 @@
     "@google/generative-ai": "~0.24.0",
     "groq-sdk": "~0.15.0",
     "openai": "~4.86.2",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@types/express": "^5.0.1"
   }
 }

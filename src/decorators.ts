@@ -99,16 +99,17 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
 /**
  * Decorator for webhook functions
  * @param hookName name of the hook
- * @param args configuration options for the hook
- * @param args.session session configuration for the hook
- * @param args.session.path path to extract session data from request, or default to use the default instance
- * ex: @hook('notification') -> POST /hooks/notification
- * ex: @hook('notification', { session: { path: 'body.user.id' } })
- * ex: @hook('notification', { session: { path: 'headers.x-user-id' } })
- * ex: @hook('notification', { session: { path: 'query.userId' } })
- * ex: @hook('notification', { session: { path: 'default' } })
+ * @param options configuration options for the hook
+ * @param options.session session configuration for the hook
+ * @param options.session.path path to extract session data from request, or default to use the default instance
+ * Examples:
+ * @hook('notification') -> POST /hooks/notification
+ * @hook('notification', { session: { path: 'body.user.id' } })
+ * @hook('notification', { session: { path: 'headers.x-user-id' } })
+ * @hook('notification', { session: { path: 'query.userId' } })
+ * @hook('notification', { session: { path: 'default' } })
  */
-export function hook(hookName: string, args?: { session?: MagmaHook['session'] }) {
+export function hook(hookName: string, options: { session?: MagmaHook['session'] } = {}) {
     return function <R extends void>(
         target: object,
         propertyKey: string,
@@ -120,13 +121,15 @@ export function hook(hookName: string, args?: { session?: MagmaHook['session'] }
         >
     ) {
         descriptor.value._hookName = hookName;
-        descriptor.value._session = args?.session;
+        descriptor.value._session = options.session;
     };
 }
 
 /**
  * Decorator for scheduled jobs
- * @param cron cron expression
+ * @param cron cron expression (https://www.npmjs.com/package/node-cron#cron-syntax)
+ * @param options configuration options for the job
+ * @param options.timezone set the timezone for the job schedule
  */
 export function job(cron: string, options: { timezone?: string } = {}) {
     // Validate cron expression

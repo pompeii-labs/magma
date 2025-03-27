@@ -485,7 +485,9 @@ export class MagmaAgent {
                 this.logger?.info(
                     `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
                 );
-            this.scheduledJobs.push(cron.schedule(job.schedule, job.handler.bind(this), job.options));
+            this.scheduledJobs.push(
+                cron.schedule(job.schedule, job.handler.bind(this), job.options)
+            );
         }
     }
 
@@ -767,28 +769,28 @@ export class MagmaAgent {
     public get tools(): MagmaTool[] {
         const agentTools = loadTools(this);
         const loadedTools = this.getTools();
-        const utilityTools = this.utilities.flatMap(u => u.tools.filter(Boolean));
+        const utilityTools = this.utilities.flatMap((u) => u.tools.filter(Boolean));
         return agentTools.concat(loadedTools).concat(utilityTools);
     }
 
     public get middleware(): MagmaMiddleware[] {
         const agentMiddleware = loadMiddleware(this);
         const loadedMiddleware = this.getMiddleware();
-        const utilityMiddleware = this.utilities.flatMap(u => u.middleware.filter(Boolean));
+        const utilityMiddleware = this.utilities.flatMap((u) => u.middleware.filter(Boolean));
         return agentMiddleware.concat(loadedMiddleware).concat(utilityMiddleware);
     }
 
     public get hooks(): MagmaHook[] {
         const agentHooks = loadHooks(this);
         const loadedHooks = this.getHooks();
-        const utilityHooks = this.utilities.flatMap(u => u.hooks.filter(Boolean));
+        const utilityHooks = this.utilities.flatMap((u) => u.hooks.filter(Boolean));
         return agentHooks.concat(loadedHooks).concat(utilityHooks);
     }
 
     public get jobs(): MagmaJob[] {
         const agentJobs = loadJobs(this);
         const loadedJobs = this.getJobs();
-        const utilityJobs = this.utilities.flatMap(u => u.jobs.filter(Boolean));
+        const utilityJobs = this.utilities.flatMap((u) => u.jobs.filter(Boolean));
         return agentJobs.concat(loadedJobs).concat(utilityJobs);
     }
 

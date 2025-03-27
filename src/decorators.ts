@@ -101,13 +101,11 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  * @param hookName name of the hook
  * @param options configuration options for the hook
  * @param options.session session configuration for the hook
- * @param options.session.path path to extract session data from request, or default to use the default instance
  * Examples:
  * @hook('notification') -> POST /hooks/notification
- * @hook('notification', { session: { path: 'body.user.id' } })
- * @hook('notification', { session: { path: 'headers.x-user-id' } })
- * @hook('notification', { session: { path: 'query.userId' } })
- * @hook('notification', { session: { path: 'default' } })
+ * @hook('notification', { session: 'default' })
+ * @hook('notification', { session: (req) => req.body.userId })
+ * @hook('notification', { session: fetchFromExternal(req) })
  */
 export function hook(hookName: string, options: { session?: MagmaHook['session'] } = {}) {
     return function <R extends void>(

@@ -331,6 +331,10 @@ export class AnthropicProvider extends Provider {
                                 case 'text_delta':
                                     blockToChange = blockBuffer[chunk.index] as MagmaTextBlock;
                                     blockToChange.text += chunk.delta.text;
+                                    magmaStreamChunk.delta.blocks.push({
+                                        type: 'text',
+                                        text: chunk.delta.text,
+                                    });
                                     break;
                                 case 'input_json_delta':
                                     blockToChange = blockBuffer[chunk.index] as MagmaToolCallBlock;

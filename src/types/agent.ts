@@ -9,5 +9,3 @@ export type MagmaCompletionConfig = {
     tool_choice?: 'auto' | 'required' | (string & {});
     stream?: boolean;
 };
-
-export type MagmaState = Map<string, any>;

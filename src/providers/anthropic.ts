@@ -247,7 +247,6 @@ export class AnthropicProvider extends Provider {
                 let stopReason: MagmaCompletionStopReason = null;
 
                 for await (const chunk of stream) {
-                    console.log(JSON.stringify(chunk));
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id,
                         provider: 'anthropic',

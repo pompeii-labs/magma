@@ -248,6 +248,10 @@ export class MagmaAgent {
             try {
                 middlewareResult = await this.runMiddleware('preCompletion', lastMessage);
             } catch (error) {
+                if (lastMessage.role === 'user') {
+                    this.messages.pop();
+                }
+
                 return new MagmaAssistantMessage({
                     role: 'assistant',
                     content: error.message,
@@ -333,6 +337,9 @@ export class MagmaAgent {
 
             try {
                 modifiedMessage = await this.runMiddleware('onMainFinish', modifiedMessage);
+                if (modifiedMessage) {
+                    this.messages[this.messages.length - 1] = modifiedMessage;
+                }
             } catch (error) {
                 if (this.messages.at(-1).role === 'assistant') {
                     this.messages.pop();

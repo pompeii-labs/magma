@@ -358,6 +358,21 @@ export class MagmaAgent {
                     `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
                 );
             }
+            
+            try {
+                modifiedMessage = await this.runMiddleware('postProcess', modifiedMessage);
+            } catch (error) {
+                if (this.messages.at(-1).role === 'assistant') {
+                    this.messages.pop();
+                }
+
+                this.addMessage({
+                    role: 'system',
+                    content: error.message,
+                });
+
+                return await this.main(config);
+            }
 
             return modifiedMessage as MagmaAssistantMessage;
         } catch (error) {
@@ -617,17 +632,18 @@ export class MagmaAgent {
                         continue;
                     }
 
-                    // If the middleware is not preCompletion, onCompletion, or onMainFinish, we skip it
+                    // If the middleware is not preCompletion, onCompletion, onMainFinish, or postProcess we skip it
                     if (
                         trigger !== 'preCompletion' &&
                         trigger !== 'onCompletion' &&
-                        trigger !== 'onMainFinish'
+                        trigger !== 'onMainFinish' &&
+                        trigger !== 'postProcess'
                     ) {
                         messageResult.blocks.push(item);
                         continue;
                     }
                     middlewarePayload = item.text as MagmaMiddlewareParamType<
-                        'preCompletion' | 'onCompletion' | 'onMainFinish'
+                        'preCompletion' | 'onCompletion' | 'onMainFinish' | 'postProcess'
                     >;
                     break;
                 case 'tool_call':
@@ -703,7 +719,7 @@ export class MagmaAgent {
                     messageResult.blocks.push({
                         type: 'text',
                         text: middlewarePayload as MagmaMiddlewareParamType<
-                            'preCompletion' | 'onCompletion' | 'onMainFinish'
+                            'preCompletion' | 'onCompletion' | 'onMainFinish' | 'postProcess'
                         >,
                     });
                     break;
@@ -785,7 +801,10 @@ export class MagmaAgent {
         const agentMiddleware = loadMiddleware(this);
         const loadedMiddleware = this.getMiddleware();
         const utilityMiddleware = this.utilities.flatMap((u) => u.middleware.filter(Boolean));
-        return agentMiddleware.concat(loadedMiddleware).concat(utilityMiddleware);
+        return agentMiddleware
+            .concat(loadedMiddleware)
+            .concat(utilityMiddleware)
+            .sort((a, b) => (a.order ?? Number.MAX_VALUE) - (b.order ?? Number.MAX_VALUE));
     }
 
     public get hooks(): MagmaHook[] {

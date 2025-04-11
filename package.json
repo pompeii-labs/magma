@@ -1,6 +1,10 @@
 {
   "name": "@pompeii-labs/magma",
+<<<<<<< Updated upstream
   "version": "1.5.3",
+=======
+  "version": "1.5.5",
+>>>>>>> Stashed changes
   "description": "The Typescript framework to build AI agents quickly and easily",
   "keywords": [
     "Agents",

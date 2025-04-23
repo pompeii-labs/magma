@@ -103,11 +103,11 @@ function wrapEventHandler(
     const originalHandler = method.bind(target);
     const wrappedHandler = async (...args: any[]) => {
         try {
-            await target.onEvent?.(
-                type,
-                methodName,
-                ...(type === 'hook' ? [] : args.slice(0, args.length - 1))
-            );
+            await target.onEvent?.({
+                type: type,
+                name: methodName,
+                payload: type === 'hook' ? [] : args.slice(0, args.length - 1),
+            });
         } catch {}
 
         return await originalHandler(...args);

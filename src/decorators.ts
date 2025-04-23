@@ -68,7 +68,7 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
  */
 export function middleware<T extends MagmaMiddlewareTriggerType>(
     trigger: T,
-    options: { critical?: boolean, order?: number } = { critical: false }
+    options: { critical?: boolean; order?: number } = { critical: false }
 ) {
     return function <
         R extends MagmaMiddlewareReturnType<T> | Promise<MagmaMiddlewareReturnType<T>>,

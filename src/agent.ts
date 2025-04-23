@@ -81,11 +81,17 @@ export class MagmaAgent {
      */
     public async receive?(message: any): Promise<void> {}
 
-    public async onEvent?(
-        type: 'job' | 'hook' | 'tool' | 'middleware',
-        name: string,
-        event: any
-    ): Promise<void> {}
+    public async onEvent?({
+        type,
+        name,
+        payload,
+        userId,
+    }: {
+        type: 'job' | 'hook' | 'tool' | 'middleware' | 'notification';
+        name: string;
+        payload: Record<string, any>;
+        userId?: string;
+    }): Promise<void> {}
 
     public async cleanup(): Promise<void> {
         try {
@@ -358,7 +364,7 @@ export class MagmaAgent {
                     `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
                 );
             }
-            
+
             try {
                 modifiedMessage = await this.runMiddleware('postProcess', modifiedMessage);
             } catch (error) {

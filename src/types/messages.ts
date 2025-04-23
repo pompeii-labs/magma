@@ -110,6 +110,7 @@ export type MagmaToolResult = {
     result: MagmaToolReturnType;
     error?: boolean;
     fn_name: string;
+    call: MagmaToolCall;
 };
 
 export type MagmaStreamChunk = {

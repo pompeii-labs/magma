@@ -548,6 +548,7 @@ export class MagmaAgent {
                     fn_name: toolCall.fn_name,
                     result: toolCall.error,
                     error: true,
+                    call: toolCall,
                 };
             } else {
                 try {
@@ -565,6 +566,7 @@ export class MagmaAgent {
                         result: result,
                         error: false,
                         fn_name: toolCall.fn_name,
+                        call: toolCall,
                     };
 
                     this.retryCount = 0;
@@ -577,6 +579,7 @@ export class MagmaAgent {
                         result: errorMessage,
                         error: true,
                         fn_name: toolCall.fn_name,
+                        call: toolCall,
                     };
                 }
             }

@@ -7,7 +7,7 @@ export const MagmaMiddlewareTriggers = [
     'onToolExecution',
     'preToolExecution',
     'onMainFinish',
-    'postProcess'
+    'postProcess',
 ] as const;
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];

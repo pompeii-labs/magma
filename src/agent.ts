@@ -81,11 +81,17 @@ export class MagmaAgent {
      */
     public async receive?(message: any): Promise<void> {}
 
-    public async onEvent?(
-        type: 'job' | 'hook' | 'tool' | 'middleware',
-        name: string,
-        event: any
-    ): Promise<void> {}
+    public async onEvent?({
+        type,
+        name,
+        payload,
+        userId,
+    }: {
+        type: 'job' | 'hook' | 'tool' | 'middleware' | 'notification';
+        name: string;
+        payload: Record<string, any>;
+        userId?: string;
+    }): Promise<void> {}
 
     public async cleanup(): Promise<void> {
         try {
@@ -358,7 +364,7 @@ export class MagmaAgent {
                     `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
                 );
             }
-            
+
             try {
                 modifiedMessage = await this.runMiddleware('postProcess', modifiedMessage);
             } catch (error) {
@@ -542,6 +548,7 @@ export class MagmaAgent {
                     fn_name: toolCall.fn_name,
                     result: toolCall.error,
                     error: true,
+                    call: toolCall,
                 };
             } else {
                 try {
@@ -559,6 +566,7 @@ export class MagmaAgent {
                         result: result,
                         error: false,
                         fn_name: toolCall.fn_name,
+                        call: toolCall,
                     };
 
                     this.retryCount = 0;
@@ -571,6 +579,7 @@ export class MagmaAgent {
                         result: errorMessage,
                         error: true,
                         fn_name: toolCall.fn_name,
+                        call: toolCall,
                     };
                 }
             }
@@ -669,6 +678,7 @@ export class MagmaAgent {
                         fn_name: item.tool_result.fn_name,
                         result: item.tool_result.result,
                         error: item.tool_result.error,
+                        call: item.tool_result.call,
                     } as MagmaMiddlewareParamType<'onToolExecution'>;
                     break;
                 default:

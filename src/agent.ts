@@ -678,6 +678,7 @@ export class MagmaAgent {
                         fn_name: item.tool_result.fn_name,
                         result: item.tool_result.result,
                         error: item.tool_result.error,
+                        call: item.tool_result.call,
                     } as MagmaMiddlewareParamType<'onToolExecution'>;
                     break;
                 default:

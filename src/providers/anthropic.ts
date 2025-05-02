@@ -218,7 +218,7 @@ export class AnthropicProvider extends Provider {
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
         attempt: number = 0,
         signal?: AbortSignal
-    ): Promise<MagmaCompletion> {
+    ): Promise<MagmaCompletion | null> {
         try {
             const anthropic = config.providerConfig.client as Anthropic;
             if (!anthropic) throw new Error('Anthropic instance not configured');
@@ -489,7 +489,7 @@ export class AnthropicProvider extends Provider {
             }
         } catch (error) {
             if (signal?.aborted) {
-                throw new Error('Request aborted');
+                return null;
             }
             if (error.error?.type === 'rate_limit_error') {
                 if (attempt >= MAX_RETRIES) {

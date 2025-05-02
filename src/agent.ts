@@ -42,8 +42,8 @@ export class MagmaAgent {
     private messages: MagmaMessage[];
     private middlewareRetries: Record<number, number>;
     private messageContext: number;
-    private abortController: AbortController | null = null;
     private scheduledJobs: cron.ScheduledTask[];
+    private abortControllers: Map<string, AbortController> = new Map();
 
     constructor(args?: AgentProps) {
         this.messageContext = args?.messageContext ?? 20;
@@ -104,7 +104,7 @@ export class MagmaAgent {
     }
 
     private async _cleanup(): Promise<void> {
-        this.abortController = null;
+        this.abortControllers.clear();
 
         this.messages = [];
 
@@ -134,6 +134,7 @@ export class MagmaAgent {
         },
         config?: MagmaProviderConfig
     ): Promise<MagmaAssistantMessage | MagmaToolResult> {
+        const requestId = Math.random().toString(36).substring(2, 15);
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
@@ -167,13 +168,18 @@ export class MagmaAgent {
         };
 
         // Create a new AbortController for this request
-        this.abortController = new AbortController();
+        const abortController = new AbortController();
+        abortController.signal.onabort = () => {
+            console.log('Aborting controller');
+            this.abortControllers.delete(requestId);
+        }
+        this.abortControllers.set(requestId, abortController);
 
         const completion = await provider.makeCompletionRequest(
             completionConfig,
             this.onStreamChunk.bind(this),
             0,
-            this.abortController?.signal
+            abortController.signal
         );
 
         this.setProviderConfig(startingProviderConfig);
@@ -245,11 +251,42 @@ export class MagmaAgent {
      *
      * @throws Will rethrow the error if no `onError` handler is defined
      */
-    public async main(config?: MagmaProviderConfig): Promise<MagmaAssistantMessage> {
+    public async main(config?: MagmaProviderConfig): Promise<MagmaAssistantMessage | null> {
+        console.log('Main call', JSON.stringify(this.messages.at(-1)));
+        const requestId = Math.random().toString(36).substring(2, 15);
         try {
+            // if (this.abortController) {
+            //     console.log('Aborting existing controller');
+            //     this.abortController.abort();
+            //     return await this.main(config);
+            // } else {
+            //     console.log('Creating new controller');
+            //     this.abortController = new AbortController();
+            //     this.abortController.signal.onabort = () => {
+            //         console.log('Controller aborted and reset');
+            //         this.abortController = null;
+            //     }
+            // }
+
+            const abortController = new AbortController();
+            abortController.signal.onabort = () => {
+                console.log('Aborting controller');
+                this.abortControllers.delete(requestId);
+            }
+            this.abortControllers.set(requestId, abortController);
+
+            for (const [id, controller] of this.abortControllers.entries()) {
+                if (id !== requestId) {
+                    controller.abort();
+                }
+            }
+
             // Call 'preCompletion' middleware
             const lastMessage = this.messages[this.messages.length - 1];
-            if (!lastMessage) throw new Error('Cannot generate message without input');
+            if (!lastMessage) {
+                console.error('Cannot generate message without input');
+                return null;
+            };
             let middlewareResult: MagmaMessage;
             try {
                 middlewareResult = await this.runMiddleware('preCompletion', lastMessage);
@@ -290,15 +327,20 @@ export class MagmaAgent {
                 tools: this.tools,
             };
 
-            // Create a new AbortController for this request
-            this.abortController = new AbortController();
-
             const completion = await provider.makeCompletionRequest(
                 completionConfig,
                 this.onStreamChunk.bind(this),
                 0,
-                this.abortController?.signal
+                abortController.signal
             );
+
+            this.abortControllers.delete(requestId);
+
+            if (completion === null) {
+                console.log('Request aborted, returning null for message', this.messages.at(-1).content);
+                return null;
+            }
+
 
             this.setProviderConfig(startingProviderConfig);
 
@@ -382,17 +424,13 @@ export class MagmaAgent {
 
             return modifiedMessage as MagmaAssistantMessage;
         } catch (error) {
-            if (error.name === 'AbortError') {
-                this.logger?.info('Request was aborted');
-                throw new Error('Request aborted');
-            }
             try {
                 this.onError(error);
             } catch {
                 throw error;
             }
         } finally {
-            this.abortController = null;
+            this.abortControllers.delete(requestId);
         }
     }
 
@@ -491,11 +529,12 @@ export class MagmaAgent {
 
     /**
      * Stops the currently executing request.
+     * @returns true if a request was killed, false otherwise
      */
     public kill(): void {
-        if (this.abortController) {
-            this.abortController.abort();
-            this.abortController = null;
+        for (const [id, controller] of this.abortControllers.entries()) {
+            controller.abort();
+            this.abortControllers.delete(id);
         }
     }
 
@@ -503,7 +542,7 @@ export class MagmaAgent {
      * Return whether the agent is currently processing a request
      */
     public get processing(): boolean {
-        return !!this.abortController;
+        return this.abortControllers.size > 0;
     }
 
     public scheduleJobs({ verbose = false }: { verbose?: boolean } = {}): void {

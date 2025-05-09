@@ -35,7 +35,7 @@ jobs:
           BRANCH="${{ steps.branch-name.outputs.branch }}"
           BRANCH_SLUG=$(echo $BRANCH | sed 's/\//-/g')
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          NEW_VERSION="${CURRENT_VERSION}-${BRANCH_SLUG}"
+          NEW_VERSION="${CURRENT_VERSION}-${BRANCH_SLUG}.$(date +'%Y%m%d%H%M%S')"
           npm version $NEW_VERSION --no-git-tag-version
           echo "Publishing version: $NEW_VERSION with tag ${BRANCH_SLUG}"
           npm publish --tag ${BRANCH_SLUG}

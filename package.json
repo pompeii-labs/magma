@@ -1,6 +1,6 @@
 {
   "name": "@pompeii-labs/magma",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "The Typescript framework to build AI agents quickly and easily",
   "keywords": [
     "Agents",

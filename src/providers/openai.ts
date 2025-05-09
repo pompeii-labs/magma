@@ -198,6 +198,8 @@ export class OpenAIProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
+                onStreamChunk?.(null);
+
                 return magmaCompletion;
             } else {
                 const openAICompletion = await openai.chat.completions.create(

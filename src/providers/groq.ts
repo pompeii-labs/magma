@@ -215,6 +215,8 @@ export class GroqProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
+                onStreamChunk?.(null);
+
                 return magmaCompletion;
             } else {
                 const groqCompletion = await groq.chat.completions.create(

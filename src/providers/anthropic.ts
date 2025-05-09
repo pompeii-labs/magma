@@ -397,6 +397,8 @@ export class AnthropicProvider extends Provider {
                                 stop_reason: stopReason,
                             };
 
+                            onStreamChunk?.(null);
+
                             return magmaCompletion;
                         }
                     }

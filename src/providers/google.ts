@@ -232,7 +232,7 @@ export class GoogleProvider extends Provider {
             }
         } catch (error) {
             if (signal?.aborted) {
-                throw new Error('Request aborted');
+                return null;
             }
             if (error.response && error.response.status === 429) {
                 if (attempt >= MAX_RETRIES) {

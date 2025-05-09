@@ -198,6 +198,8 @@ export class OpenAIProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
+                onStreamChunk?.(null);
+
                 return magmaCompletion;
             } else {
                 const openAICompletion = await openai.chat.completions.create(
@@ -260,7 +262,7 @@ export class OpenAIProvider extends Provider {
             }
         } catch (error) {
             if (signal?.aborted) {
-                throw new Error('Request aborted');
+                return null;
             }
             if (error.response && error.response.status === 429) {
                 if (attempt >= MAX_RETRIES) {

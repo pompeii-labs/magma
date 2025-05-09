@@ -170,6 +170,8 @@ export class GoogleProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
+                onStreamChunk?.(null);
+
                 return magmaCompletion;
             } else {
                 const googleCompletion = await model.generateContent(
@@ -232,7 +234,7 @@ export class GoogleProvider extends Provider {
             }
         } catch (error) {
             if (signal?.aborted) {
-                throw new Error('Request aborted');
+                return null;
             }
             if (error.response && error.response.status === 429) {
                 if (attempt >= MAX_RETRIES) {

@@ -323,6 +323,30 @@ export class MagmaAgent {
                     console.error('Cannot generate message without input');
                     return resolve(null);
                 }
+
+                // if the last message is a user message, we have to make sure any tool calls before have their results in the message array
+                // otherwise, we need to remove the tool call
+
+                if (
+                    lastMessage.role === 'user' &&
+                    lastMessage.content.length > 0 &&
+                    this.messages.length > 1
+                ) {
+                    const penultimateMessage = this.messages[this.messages.length - 2];
+                    if (
+                        penultimateMessage.role === 'assistant' &&
+                        penultimateMessage.getToolCalls().length > 0
+                    ) {
+                        this.messages.splice(this.messages.length - 2, 1);
+                    } else if (
+                        penultimateMessage.role === 'user' &&
+                        penultimateMessage.getToolResults().length > 0 &&
+                        this.messages.length > 2
+                    ) {
+                        this.messages.splice(this.messages.length - 3, 2);
+                    }
+                }
+
                 let middlewareResult: MagmaMessage;
                 try {
                     middlewareResult = await this.runMiddleware('preCompletion', lastMessage);
@@ -380,10 +404,7 @@ export class MagmaAgent {
                 );
 
                 if (completion === null) {
-                    // console.log(
-                    //     'Completion returned null, returning null for message',
-                    //     this.messages.at(-1).content
-                    // );
+                    // console.log('Completion returned null, returning null for request', requestId);
                     return resolve(null);
                 }
 
@@ -417,6 +438,11 @@ export class MagmaAgent {
                 }
 
                 const toolResults = await this.executeTools(completion.message);
+
+                if (!this.abortControllers.has(requestId)) {
+                    // console.log('Controller for request', requestId, 'not found, returning null');
+                    return resolve(null);
+                }
 
                 if (toolResults.length > 0) {
                     this.messages.push(

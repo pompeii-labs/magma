@@ -109,12 +109,6 @@ export class MagmaAgent {
 
         this.messages = [];
 
-        for (const scheduledJob of this.scheduledJobs) {
-            scheduledJob.stop();
-        }
-
-        this.scheduledJobs = [];
-
         this.logger?.debug('Agent cleanup complete');
     }
 
@@ -622,6 +616,14 @@ export class MagmaAgent {
                 cron.schedule(job.schedule, job.handler.bind(this), job.options)
             );
         }
+    }
+
+    public cancelJobs(): void {
+        for (const scheduledJob of this.scheduledJobs) {
+            scheduledJob.stop();
+        }
+
+        this.scheduledJobs = [];
     }
 
     /**

@@ -140,7 +140,7 @@ export class MagmaMessage {
             throw new Error('Cannot provide both content and blocks to MagmaMessage constructor');
         }
 
-        if (content) {
+        if (content || content === '') {
             this.blocks = [
                 {
                     type: 'text',

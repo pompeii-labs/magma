@@ -36,14 +36,12 @@ export function tool(args: {
             }
         >
     ) {
-        console.log('Tool Decorator Args:', args);
         descriptor.value._toolInfo = {
             name: args.name ?? propertyKey,
             description: args.description,
             cache: args.cache,
             enabled: args.enabled,
         };
-        console.log('Tool Decorator Result:', descriptor.value._toolInfo);
     };
 }
 

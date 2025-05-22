@@ -53,11 +53,11 @@
     "node-cron": "^3.0.3"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": "~0.39.0",
+    "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "~0.24.0",
+    "@types/express": "^5.0.1",
     "groq-sdk": "~0.15.0",
     "openai": "~4.86.2",
-    "ws": "^8.18.0",
-    "@types/express": "^5.0.1"
+    "ws": "^8.18.0"
   }
 }

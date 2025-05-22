@@ -16,13 +16,23 @@ import { validate } from 'node-cron';
  * Decorator to define a tool (optional)
  * @param args name and description for tool
  */
-export function tool(args: { name?: string; description?: string; cache?: boolean }) {
+export function tool(args: {
+    name?: string;
+    description?: string;
+    cache?: boolean;
+    enabled?: (agent: MagmaAgent) => boolean;
+}) {
     return function <R extends MagmaToolReturnType | Promise<MagmaToolReturnType>>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
             ((call: MagmaToolCall, agent: MagmaAgent) => R) & {
-                _toolInfo?: { name?: string; description?: string; cache?: boolean };
+                _toolInfo?: {
+                    name?: string;
+                    description?: string;
+                    cache?: boolean;
+                    enabled?: (agent: MagmaAgent) => boolean;
+                };
             }
         >
     ) {
@@ -30,6 +40,7 @@ export function tool(args: { name?: string; description?: string; cache?: boolea
             name: args.name ?? propertyKey,
             description: args.description,
             cache: args.cache,
+            enabled: args.enabled,
         };
     };
 }

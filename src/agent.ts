@@ -20,7 +20,7 @@ import {
 } from './types';
 import { Provider } from './providers';
 import { MagmaLogger } from './logger';
-import { hash, loadHooks, loadJobs, loadMiddleware, loadTools, loadUtilities } from './helpers';
+import { hash, loadHooks, loadJobs, loadMiddleware, loadTools } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
@@ -388,7 +388,7 @@ export class MagmaAgent {
                         ...this.getMessages(this.messageContext),
                     ],
                     stream: this.stream,
-                    tools: this.tools,
+                    tools: this.tools.filter((t) => t.enabled(this)),
                 };
 
                 if (!this.abortControllers.has(requestId)) {

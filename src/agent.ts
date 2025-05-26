@@ -204,7 +204,7 @@ export class MagmaAgent {
 
                     // If the tool call is not `inConversation`, we just return the result
                     if (!args.addToConversation) {
-                        const toolResults = await this.executeTools(call);
+                        const toolResults = await this.executeTools(call, [tool.name]);
                         return resolve(toolResults[0]);
                     }
 
@@ -236,7 +236,7 @@ export class MagmaAgent {
                         );
                     }
 
-                    const toolResults = await this.executeTools(completion.message);
+                    const toolResults = await this.executeTools(completion.message, [tool.name]);
 
                     if (toolResults.length > 0) {
                         this.messages.push(
@@ -658,7 +658,10 @@ export class MagmaAgent {
      * @param call MagmaToolCall tool call to run
      * @returns completion to continue the conversation
      */
-    private async executeTools(message: MagmaMessage): Promise<MagmaToolResult[]> {
+    private async executeTools(
+        message: MagmaMessage,
+        allowList: string[] = []
+    ): Promise<MagmaToolResult[]> {
         // run preToolExecution middleware
         let modifiedMessage = await this.runMiddleware('preToolExecution', message);
 
@@ -684,7 +687,9 @@ export class MagmaAgent {
                 };
             } else {
                 try {
-                    const tool = this.tools.find((t) => t.name === toolCall.fn_name);
+                    const tool = this.tools
+                        .filter((t) => t.enabled(this) || allowList.includes(t.name))
+                        .find((t) => t.name === toolCall.fn_name);
                     if (!tool)
                         throw new Error(`No tool found to handle call for ${toolCall.fn_name}()`);
 

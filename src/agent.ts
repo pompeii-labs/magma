@@ -291,7 +291,18 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | null> {
         const requestId = Math.random().toString(36).substring(2, 15);
-        // console.log(requestId);
+        for (let i = 0; i < this.messages.length - 1; i++) {
+            const toolCallIds = this.messages[i].getToolCalls().map((t) => t.id);
+            const toolResultIds = this.messages[i + 1].getToolResults().map((t) => t.id);
+
+            if (!toolCallIds.every((id) => toolResultIds.includes(id))) {
+                this.messages.splice(i, 2);
+                i = 0;
+            }
+        }
+        if (this.messages.at(-1)?.getToolCalls().length > 0) {
+            this.messages.pop();
+        }
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
             const mainPromise = new Promise<MagmaAssistantMessage | null>(async (resolve) => {

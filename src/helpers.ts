@@ -91,31 +91,6 @@ export function loadUtilities(target: any): MagmaUtilities {
     return { tools, hooks, jobs, middleware };
 }
 
-function wrapEventHandler(
-    type: 'hook' | 'job' | 'middleware' | 'tool',
-    method: Function,
-    target: any
-): Function {
-    if (!target || !target.onEvent) return method;
-
-    const methodName = method['_methodName'] || method['name'];
-
-    const originalHandler = method.bind(target);
-    const wrappedHandler = async (...args: any[]) => {
-        try {
-            await target.onEvent?.({
-                type: type,
-                name: methodName,
-                payload: type === 'hook' ? [] : args.slice(0, args.length - 1),
-            });
-        } catch {}
-
-        return await originalHandler(...args);
-    };
-
-    return wrappedHandler;
-}
-
 /**
  * Helper function to load tools from a class or instance of a class
  * If the target is an instance, it will load both the static and instance tools
@@ -131,7 +106,7 @@ export function loadTools(target: any): MagmaTool[] {
         if (typeof method === 'function' && ('_toolInfo' in method || '_parameterInfo' in method)) {
             const params: MagmaToolParam[] = method['_parameterInfo'] ?? [];
             tools.push({
-                target: wrapEventHandler('tool', method, target).bind(target),
+                target: method.bind(target),
                 name: (method['_toolInfo'] as any)?.name ?? method['_methodName'],
                 description: (method['_toolInfo'] as any)?.description ?? undefined,
                 params,
@@ -160,7 +135,7 @@ export function loadHooks(target: any): MagmaHook[] {
         if (typeof method === 'function' && '_hookName' in method) {
             hooks.push({
                 name: method['_hookName'],
-                handler: wrapEventHandler('hook', method, target).bind(target),
+                handler: method.bind(target),
                 session: method['_session'],
             } as MagmaHook);
         }
@@ -184,7 +159,7 @@ export function loadJobs(target: any): MagmaJob[] {
     for (const method of methods) {
         if (typeof method === 'function' && '_schedule' in method) {
             jobs.push({
-                handler: wrapEventHandler('job', method, target).bind(target),
+                handler: method.bind(target),
                 schedule: method['_schedule'],
                 options: method['_options'],
                 name: method['_methodName'] || method['name'],
@@ -211,7 +186,7 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
         if (typeof method === 'function' && '_middlewareTrigger' in method) {
             middleware.push({
                 trigger: method['_middlewareTrigger'],
-                action: wrapEventHandler('middleware', method, target).bind(target),
+                action: method.bind(target),
                 name: method['_methodName'] || method['name'],
                 critical: method['_critical'] ?? false,
                 order: method['_order'],

@@ -6,6 +6,7 @@ import {
     MagmaJob,
     MagmaMiddleware,
     MagmaUtilities,
+    MagmaMessage,
 } from './types';
 
 /**
@@ -246,3 +247,68 @@ export const hash = (str: string) => {
     }
     return hash;
 };
+
+/**
+ * Helper function to sanitize messages by removing tool calls and tool results that are not preceded by a tool call or tool result. This function operates on the messages array in place.
+ * @param messages MagmaMessage[] to sanitize
+ */
+export function sanitizeMessages(messages: MagmaMessage[]): void {
+    for (let i = 0; i < messages.length; i++) {
+        // if the message is a tool call
+        if (messages[i].role === 'assistant' && messages[i].getToolCalls().length > 0) {
+            // console.log('Tool call found', messages[i]);
+            // if the message is at the end of the array, we need to remove it
+            if (i === messages.length - 1) {
+                // console.log(
+                //     'Tool call found at the end of the array, removing',
+                //     messages[i]
+                // );
+                messages.pop();
+            } else {
+                // if the message is not at the end of the array, make sure the next message is a tool result
+                if (
+                    messages[i + 1].role === 'user' &&
+                    messages[i + 1].getToolResults().length > 0
+                ) {
+                    // console.log('Tool call found with tool result, continuing');
+                    continue;
+                } else {
+                    // console.log(
+                    //     'Tool call found with no tool result, removing',
+                    //     messages[i]
+                    // );
+                    messages.splice(i, 1);
+                    i--;
+                }
+            }
+            // if the message is a tool result
+        } else if (messages[i].role === 'user' && messages[i].getToolResults().length > 0) {
+            // console.log('Tool result found', messages[i]);
+            // if the message is at the beginning of the array, we need to remove it
+            if (i === 0) {
+                // console.log(
+                //     'Tool result found at the beginning of the array, removing',
+                //     messages[i]
+                // );
+                messages.shift();
+                i--;
+            } else {
+                // if the message is not at the beginning of the array, make sure the previous message is a tool call
+                if (
+                    messages[i - 1].role === 'assistant' &&
+                    messages[i - 1].getToolCalls().length > 0
+                ) {
+                    // console.log('Tool result found with tool call, continuing');
+                    continue;
+                } else {
+                    // console.log(
+                    //     'Tool result found with no tool call, removing',
+                    //     messages[i]
+                    // );
+                    messages.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+    }
+}

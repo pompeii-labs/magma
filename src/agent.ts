@@ -19,8 +19,7 @@ import {
     MagmaSystemMessage,
 } from './types';
 import { Provider } from './providers';
-import { MagmaLogger } from './logger';
-import { hash, loadHooks, loadJobs, loadMiddleware, loadTools } from './helpers';
+import { hash, loadHooks, loadJobs, loadMiddleware, loadTools, sanitizeMessages } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
@@ -29,13 +28,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
 
 type AgentProps = MagmaProviderConfig & {
-    logger?: MagmaLogger;
+    verbose?: boolean;
     messageContext?: number;
     stream?: boolean;
 };
 
 export class MagmaAgent {
-    logger?: MagmaLogger;
+    verbose?: boolean;
     stream: boolean = false;
     private providerConfig: MagmaProviderConfig;
     private retryCount: number;
@@ -47,7 +46,7 @@ export class MagmaAgent {
 
     constructor(args?: AgentProps) {
         this.messageContext = args?.messageContext ?? 20;
-        this.logger = args?.logger;
+        this.verbose = args?.verbose ?? false;
         this.stream = args?.stream ?? false;
 
         args ??= {
@@ -70,7 +69,13 @@ export class MagmaAgent {
 
         this.scheduledJobs = [];
 
-        this.logger?.debug('Agent initialized');
+        this.log('Agent initialized');
+    }
+
+    public log(message: string): void {
+        if (this.verbose) {
+            console.log(message);
+        }
     }
 
     public async setup?(opts?: object): Promise<void> {}
@@ -85,7 +90,7 @@ export class MagmaAgent {
         try {
             await this.onCleanup();
         } catch (error) {
-            this.logger?.error(`Error during cleanup: ${error.message ?? 'Unknown'}`);
+            this.log(`Error during cleanup: ${error.message ?? 'Unknown'}`);
         } finally {
             this._cleanup();
         }
@@ -97,7 +102,7 @@ export class MagmaAgent {
 
         this.messages = [];
 
-        this.logger?.debug('Agent cleanup complete');
+        this.log('Agent cleanup complete');
     }
 
     /**
@@ -119,6 +124,7 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | MagmaToolResult> {
         const requestId = Math.random().toString(36).substring(2, 15);
+        sanitizeMessages(this.messages);
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
@@ -173,12 +179,13 @@ export class MagmaAgent {
                         return resolve(null);
                     }
 
-                    const completion = await provider.makeCompletionRequest(
-                        completionConfig,
-                        this.onStreamChunk.bind(this),
-                        0,
-                        this.abortControllers.get(requestId)?.signal
-                    );
+                    const completion = await provider.makeCompletionRequest({
+                        config: completionConfig,
+                        onStreamChunk: this.onStreamChunk.bind(this),
+                        attempt: 0,
+                        signal: this.abortControllers.get(requestId)?.signal,
+                        agent: this,
+                    });
 
                     if (completion === null) {
                         return resolve(null);
@@ -279,72 +286,7 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | null> {
         const requestId = Math.random().toString(36).substring(2, 15);
-        for (let i = 0; i < this.messages.length; i++) {
-            // if the message is a tool call
-            if (
-                this.messages[i].role === 'assistant' &&
-                this.messages[i].getToolCalls().length > 0
-            ) {
-                // console.log('Tool call found', this.messages[i]);
-                // if the message is at the end of the array, we need to remove it
-                if (i === this.messages.length - 1) {
-                    // console.log(
-                    //     'Tool call found at the end of the array, removing',
-                    //     this.messages[i]
-                    // );
-                    this.messages.pop();
-                } else {
-                    // if the message is not at the end of the array, make sure the next message is a tool result
-                    if (
-                        this.messages[i + 1].role === 'user' &&
-                        this.messages[i + 1].getToolResults().length > 0
-                    ) {
-                        // console.log('Tool call found with tool result, continuing');
-                        continue;
-                    } else {
-                        // console.log(
-                        //     'Tool call found with no tool result, removing',
-                        //     this.messages[i]
-                        // );
-                        this.messages.splice(i, 1);
-                        i--;
-                    }
-                }
-            }
-        }
-
-        for (let i = 0; i < this.messages.length; i++) {
-            // if the message is a tool result
-            if (this.messages[i].role === 'user' && this.messages[i].getToolResults().length > 0) {
-                // console.log('Tool result found', this.messages[i]);
-                // if the message is at the beginning of the array, we need to remove it
-                if (i === 0) {
-                    // console.log(
-                    //     'Tool result found at the beginning of the array, removing',
-                    //     this.messages[i]
-                    // );
-                    this.messages.shift();
-                    i--;
-                } else {
-                    // if the message is not at the beginning of the array, make sure the previous message is a tool call
-                    if (
-                        this.messages[i - 1].role === 'assistant' &&
-                        this.messages[i - 1].getToolCalls().length > 0
-                    ) {
-                        // console.log('Tool result found with tool call, continuing');
-                        continue;
-                    } else {
-                        // console.log(
-                        //     'Tool result found with no tool call, removing',
-                        //     this.messages[i]
-                        // );
-                        this.messages.splice(i, 1);
-                        i--;
-                    }
-                }
-            }
-        }
-
+        sanitizeMessages(this.messages);
         // console.log(requestId);
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
@@ -428,12 +370,13 @@ export class MagmaAgent {
                     return resolve(null);
                 }
 
-                const completion = await provider.makeCompletionRequest(
-                    completionConfig,
-                    this.onStreamChunk.bind(this),
-                    0,
-                    this.abortControllers.get(requestId)?.signal
-                );
+                const completion = await provider.makeCompletionRequest({
+                    config: completionConfig,
+                    onStreamChunk: this.onStreamChunk.bind(this),
+                    attempt: 0,
+                    signal: this.abortControllers.get(requestId)?.signal,
+                    agent: this,
+                });
 
                 if (completion === null) {
                     // console.log('Completion returned null, returning null for request', requestId);
@@ -667,9 +610,7 @@ export class MagmaAgent {
 
         for (const job of jobs) {
             if (verbose)
-                this.logger?.info(
-                    `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
-                );
+                this.log(`Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`);
             this.scheduledJobs.push(
                 cron.schedule(job.schedule, job.handler.bind(this), job.options)
             );
@@ -727,7 +668,7 @@ export class MagmaAgent {
 
                     const result = await tool.target(toolCall, this);
                     if (!result) {
-                        this.logger?.warn(`Tool execution failed for ${toolCall.fn_name}()`);
+                        this.log(`Tool execution failed for ${toolCall.fn_name}()`);
                     }
 
                     toolResult = {
@@ -741,7 +682,7 @@ export class MagmaAgent {
                     this.retryCount = 0;
                 } catch (error) {
                     const errorMessage = `Tool Execution Failed for ${toolCall.fn_name}() - ${error.message ?? 'Unknown'}`;
-                    this.logger?.warn(errorMessage);
+                    this.log(errorMessage);
 
                     toolResult = {
                         id: toolCall.id,
@@ -874,7 +815,7 @@ export class MagmaAgent {
                     middlewareErrors.push(error.message);
 
                     if (this.middlewareRetries[mHash] >= kMiddlewareMaxRetries) {
-                        this.logger?.error(
+                        this.log(
                             `${trigger} middleware failed to recover after ${kMiddlewareMaxRetries} attempts`
                         );
 
@@ -887,7 +828,7 @@ export class MagmaAgent {
                         }
                     }
 
-                    this.logger?.warn(
+                    this.log(
                         `'${trigger}' middleware threw an error - ${error.message ?? 'Unknown'}`
                     );
                 }

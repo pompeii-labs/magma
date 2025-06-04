@@ -14,7 +14,6 @@ import {
     MagmaUsage,
     OpenAIProviderConfig,
 } from '../types';
-import { Logger } from '../logger';
 import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
@@ -27,14 +26,22 @@ import {
 } from 'openai/resources/chat/completions';
 import { ChatCompletionCreateParamsBase } from 'openai/resources/chat/completions/completions';
 import { safeJSON } from 'openai/core';
+import type { MagmaAgent } from '../agent';
 
 export class OpenAIProvider extends Provider {
-    static override async makeCompletionRequest(
-        config: MagmaCompletionConfig,
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
-        attempt: number = 0,
-        signal?: AbortSignal
-    ): Promise<MagmaCompletion> {
+    static override async makeCompletionRequest({
+        config,
+        onStreamChunk,
+        attempt = 0,
+        signal,
+        agent,
+    }: {
+        config: MagmaCompletionConfig;
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
+        attempt: number;
+        signal?: AbortSignal;
+        agent: MagmaAgent;
+    }): Promise<MagmaCompletion> {
         try {
             const openai = config.providerConfig.client as OpenAI;
             if (!openai) throw new Error('OpenAI instance not configured');
@@ -269,10 +276,16 @@ export class OpenAIProvider extends Provider {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
                 }
                 const delay = Math.min(Math.pow(2, attempt) * 1000, 60000);
-                Logger.main.warn(`Rate limited. Retrying after ${delay}ms.`);
+                agent.log(`Rate limited. Retrying after ${delay}ms.`);
 
                 await sleep(delay);
-                return this.makeCompletionRequest(config, onStreamChunk, attempt + 1);
+                return this.makeCompletionRequest({
+                    config,
+                    onStreamChunk,
+                    attempt: attempt + 1,
+                    signal,
+                    agent,
+                });
             } else {
                 throw error;
             }

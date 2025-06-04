@@ -279,6 +279,72 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | null> {
         const requestId = Math.random().toString(36).substring(2, 15);
+        for (let i = 0; i < this.messages.length; i++) {
+            // if the message is a tool call
+            if (
+                this.messages[i].role === 'assistant' &&
+                this.messages[i].getToolCalls().length > 0
+            ) {
+                // console.log('Tool call found', this.messages[i]);
+                // if the message is at the end of the array, we need to remove it
+                if (i === this.messages.length - 1) {
+                    // console.log(
+                    //     'Tool call found at the end of the array, removing',
+                    //     this.messages[i]
+                    // );
+                    this.messages.pop();
+                } else {
+                    // if the message is not at the end of the array, make sure the next message is a tool result
+                    if (
+                        this.messages[i + 1].role === 'user' &&
+                        this.messages[i + 1].getToolResults().length > 0
+                    ) {
+                        // console.log('Tool call found with tool result, continuing');
+                        continue;
+                    } else {
+                        // console.log(
+                        //     'Tool call found with no tool result, removing',
+                        //     this.messages[i]
+                        // );
+                        this.messages.splice(i, 1);
+                        i--;
+                    }
+                }
+            }
+        }
+
+        for (let i = 0; i < this.messages.length; i++) {
+            // if the message is a tool result
+            if (this.messages[i].role === 'user' && this.messages[i].getToolResults().length > 0) {
+                // console.log('Tool result found', this.messages[i]);
+                // if the message is at the beginning of the array, we need to remove it
+                if (i === 0) {
+                    // console.log(
+                    //     'Tool result found at the beginning of the array, removing',
+                    //     this.messages[i]
+                    // );
+                    this.messages.shift();
+                    i--;
+                } else {
+                    // if the message is not at the beginning of the array, make sure the previous message is a tool call
+                    if (
+                        this.messages[i - 1].role === 'assistant' &&
+                        this.messages[i - 1].getToolCalls().length > 0
+                    ) {
+                        // console.log('Tool result found with tool call, continuing');
+                        continue;
+                    } else {
+                        // console.log(
+                        //     'Tool result found with no tool call, removing',
+                        //     this.messages[i]
+                        // );
+                        this.messages.splice(i, 1);
+                        i--;
+                    }
+                }
+            }
+        }
+
         // console.log(requestId);
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
@@ -310,29 +376,6 @@ export class MagmaAgent {
                 if (!lastMessage) {
                     console.error('Cannot generate message without input');
                     return resolve(null);
-                }
-
-                // if the last message is a user message, we have to make sure any tool calls before have their results in the message array
-                // otherwise, we need to remove the tool call
-
-                if (
-                    lastMessage.role === 'user' &&
-                    lastMessage.content.length > 0 &&
-                    this.messages.length > 1
-                ) {
-                    const penultimateMessage = this.messages[this.messages.length - 2];
-                    if (
-                        penultimateMessage.role === 'assistant' &&
-                        penultimateMessage.getToolCalls().length > 0
-                    ) {
-                        this.messages.splice(this.messages.length - 2, 1);
-                    } else if (
-                        penultimateMessage.role === 'user' &&
-                        penultimateMessage.getToolResults().length > 0 &&
-                        this.messages.length > 2
-                    ) {
-                        this.messages.splice(this.messages.length - 3, 2);
-                    }
                 }
 
                 let middlewareResult: MagmaMessage;
@@ -369,6 +412,7 @@ export class MagmaAgent {
 
                 const provider = Provider.factory(this.providerConfig.provider);
 
+                // console.log('Messages before completion', JSON.stringify(this.messages, null, 2));
                 const completionConfig: MagmaCompletionConfig = {
                     providerConfig: this.providerConfig,
                     messages: [

@@ -1,3 +1,4 @@
+import type { MagmaAgent } from '../agent';
 import {
     MagmaCompletion,
     MagmaCompletionConfig,
@@ -48,12 +49,19 @@ export abstract class Provider implements ProviderProps {
         throw new Error('Provider.convertMessages not implemented');
     }
 
-    static async makeCompletionRequest(
-        config: MagmaCompletionConfig,
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>,
-        attempt: number = 0,
-        signal?: AbortSignal
-    ): Promise<MagmaCompletion> {
+    static async makeCompletionRequest({
+        config,
+        onStreamChunk,
+        attempt = 0,
+        signal,
+        agent,
+    }: {
+        config: MagmaCompletionConfig;
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
+        attempt: number;
+        signal?: AbortSignal;
+        agent: MagmaAgent;
+    }): Promise<MagmaCompletion> {
         config;
         onStreamChunk;
         attempt;

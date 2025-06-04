@@ -19,8 +19,7 @@ import {
     MagmaSystemMessage,
 } from './types';
 import { Provider } from './providers';
-import { MagmaLogger } from './logger';
-import { hash, loadHooks, loadJobs, loadMiddleware, loadTools } from './helpers';
+import { hash, loadHooks, loadJobs, loadMiddleware, loadTools, sanitizeMessages } from './helpers';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
@@ -29,13 +28,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const kMiddlewareMaxRetries = 5;
 
 type AgentProps = MagmaProviderConfig & {
-    logger?: MagmaLogger;
+    verbose?: boolean;
     messageContext?: number;
     stream?: boolean;
 };
 
 export class MagmaAgent {
-    logger?: MagmaLogger;
+    verbose?: boolean;
     stream: boolean = false;
     private providerConfig: MagmaProviderConfig;
     private retryCount: number;
@@ -47,7 +46,7 @@ export class MagmaAgent {
 
     constructor(args?: AgentProps) {
         this.messageContext = args?.messageContext ?? 20;
-        this.logger = args?.logger;
+        this.verbose = args?.verbose ?? false;
         this.stream = args?.stream ?? false;
 
         args ??= {
@@ -70,7 +69,13 @@ export class MagmaAgent {
 
         this.scheduledJobs = [];
 
-        this.logger?.debug('Agent initialized');
+        this.log('Agent initialized');
+    }
+
+    public log(message: string): void {
+        if (this.verbose) {
+            console.log(message);
+        }
     }
 
     public async setup?(opts?: object): Promise<void> {}
@@ -81,23 +86,11 @@ export class MagmaAgent {
      */
     public async receive?(message: any): Promise<void> {}
 
-    public async onEvent?({
-        type,
-        name,
-        payload,
-        userId,
-    }: {
-        type: 'job' | 'hook' | 'tool' | 'middleware' | 'notification';
-        name: string;
-        payload: Record<string, any>;
-        userId?: string;
-    }): Promise<void> {}
-
     public async cleanup(): Promise<void> {
         try {
             await this.onCleanup();
         } catch (error) {
-            this.logger?.error(`Error during cleanup: ${error.message ?? 'Unknown'}`);
+            this.log(`Error during cleanup: ${error.message ?? 'Unknown'}`);
         } finally {
             this._cleanup();
         }
@@ -109,7 +102,7 @@ export class MagmaAgent {
 
         this.messages = [];
 
-        this.logger?.debug('Agent cleanup complete');
+        this.log('Agent cleanup complete');
     }
 
     /**
@@ -131,6 +124,7 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | MagmaToolResult> {
         const requestId = Math.random().toString(36).substring(2, 15);
+        sanitizeMessages(this.messages);
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
@@ -185,12 +179,13 @@ export class MagmaAgent {
                         return resolve(null);
                     }
 
-                    const completion = await provider.makeCompletionRequest(
-                        completionConfig,
-                        this.onStreamChunk.bind(this),
-                        0,
-                        this.abortControllers.get(requestId)?.signal
-                    );
+                    const completion = await provider.makeCompletionRequest({
+                        config: completionConfig,
+                        onStreamChunk: this.onStreamChunk.bind(this),
+                        attempt: 0,
+                        signal: this.abortControllers.get(requestId)?.signal,
+                        agent: this,
+                    });
 
                     if (completion === null) {
                         return resolve(null);
@@ -291,6 +286,7 @@ export class MagmaAgent {
         parentRequestIds: string[] = []
     ): Promise<MagmaAssistantMessage | null> {
         const requestId = Math.random().toString(36).substring(2, 15);
+        sanitizeMessages(this.messages);
         // console.log(requestId);
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
@@ -322,29 +318,6 @@ export class MagmaAgent {
                 if (!lastMessage) {
                     console.error('Cannot generate message without input');
                     return resolve(null);
-                }
-
-                // if the last message is a user message, we have to make sure any tool calls before have their results in the message array
-                // otherwise, we need to remove the tool call
-
-                if (
-                    lastMessage.role === 'user' &&
-                    lastMessage.content.length > 0 &&
-                    this.messages.length > 1
-                ) {
-                    const penultimateMessage = this.messages[this.messages.length - 2];
-                    if (
-                        penultimateMessage.role === 'assistant' &&
-                        penultimateMessage.getToolCalls().length > 0
-                    ) {
-                        this.messages.splice(this.messages.length - 2, 1);
-                    } else if (
-                        penultimateMessage.role === 'user' &&
-                        penultimateMessage.getToolResults().length > 0 &&
-                        this.messages.length > 2
-                    ) {
-                        this.messages.splice(this.messages.length - 3, 2);
-                    }
                 }
 
                 let middlewareResult: MagmaMessage;
@@ -381,6 +354,7 @@ export class MagmaAgent {
 
                 const provider = Provider.factory(this.providerConfig.provider);
 
+                // console.log('Messages before completion', JSON.stringify(this.messages, null, 2));
                 const completionConfig: MagmaCompletionConfig = {
                     providerConfig: this.providerConfig,
                     messages: [
@@ -396,12 +370,13 @@ export class MagmaAgent {
                     return resolve(null);
                 }
 
-                const completion = await provider.makeCompletionRequest(
-                    completionConfig,
-                    this.onStreamChunk.bind(this),
-                    0,
-                    this.abortControllers.get(requestId)?.signal
-                );
+                const completion = await provider.makeCompletionRequest({
+                    config: completionConfig,
+                    onStreamChunk: this.onStreamChunk.bind(this),
+                    attempt: 0,
+                    signal: this.abortControllers.get(requestId)?.signal,
+                    agent: this,
+                });
 
                 if (completion === null) {
                     // console.log('Completion returned null, returning null for request', requestId);
@@ -635,9 +610,7 @@ export class MagmaAgent {
 
         for (const job of jobs) {
             if (verbose)
-                this.logger?.info(
-                    `Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`
-                );
+                this.log(`Job ${job.handler.name.split(' ').at(-1)} scheduled for ${job.schedule}`);
             this.scheduledJobs.push(
                 cron.schedule(job.schedule, job.handler.bind(this), job.options)
             );
@@ -695,12 +668,12 @@ export class MagmaAgent {
 
                     const result = await tool.target(toolCall, this);
                     if (!result) {
-                        this.logger?.warn(`Tool execution failed for ${toolCall.fn_name}()`);
+                        this.log(`Tool execution failed for ${toolCall.fn_name}()`);
                     }
 
                     toolResult = {
                         id: toolCall.id,
-                        result: result,
+                        result: result ?? 'No result returned',
                         error: false,
                         fn_name: toolCall.fn_name,
                         call: toolCall,
@@ -709,7 +682,7 @@ export class MagmaAgent {
                     this.retryCount = 0;
                 } catch (error) {
                     const errorMessage = `Tool Execution Failed for ${toolCall.fn_name}() - ${error.message ?? 'Unknown'}`;
-                    this.logger?.warn(errorMessage);
+                    this.log(errorMessage);
 
                     toolResult = {
                         id: toolCall.id,
@@ -842,7 +815,7 @@ export class MagmaAgent {
                     middlewareErrors.push(error.message);
 
                     if (this.middlewareRetries[mHash] >= kMiddlewareMaxRetries) {
-                        this.logger?.error(
+                        this.log(
                             `${trigger} middleware failed to recover after ${kMiddlewareMaxRetries} attempts`
                         );
 
@@ -855,7 +828,7 @@ export class MagmaAgent {
                         }
                     }
 
-                    this.logger?.warn(
+                    this.log(
                         `'${trigger}' middleware threw an error - ${error.message ?? 'Unknown'}`
                     );
                 }

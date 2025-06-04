@@ -6,6 +6,7 @@ import {
     MagmaJob,
     MagmaMiddleware,
     MagmaUtilities,
+    MagmaMessage,
 } from './types';
 
 /**
@@ -91,31 +92,6 @@ export function loadUtilities(target: any): MagmaUtilities {
     return { tools, hooks, jobs, middleware };
 }
 
-function wrapEventHandler(
-    type: 'hook' | 'job' | 'middleware' | 'tool',
-    method: Function,
-    target: any
-): Function {
-    if (!target || !target.onEvent) return method;
-
-    const methodName = method['_methodName'] || method['name'];
-
-    const originalHandler = method.bind(target);
-    const wrappedHandler = async (...args: any[]) => {
-        try {
-            await target.onEvent?.({
-                type: type,
-                name: methodName,
-                payload: type === 'hook' ? [] : args.slice(0, args.length - 1),
-            });
-        } catch {}
-
-        return await originalHandler(...args);
-    };
-
-    return wrappedHandler;
-}
-
 /**
  * Helper function to load tools from a class or instance of a class
  * If the target is an instance, it will load both the static and instance tools
@@ -131,7 +107,7 @@ export function loadTools(target: any): MagmaTool[] {
         if (typeof method === 'function' && ('_toolInfo' in method || '_parameterInfo' in method)) {
             const params: MagmaToolParam[] = method['_parameterInfo'] ?? [];
             tools.push({
-                target: wrapEventHandler('tool', method, target).bind(target),
+                target: method.bind(target),
                 name: (method['_toolInfo'] as any)?.name ?? method['_methodName'],
                 description: (method['_toolInfo'] as any)?.description ?? undefined,
                 params,
@@ -160,7 +136,7 @@ export function loadHooks(target: any): MagmaHook[] {
         if (typeof method === 'function' && '_hookName' in method) {
             hooks.push({
                 name: method['_hookName'],
-                handler: wrapEventHandler('hook', method, target).bind(target),
+                handler: method.bind(target),
                 session: method['_session'],
             } as MagmaHook);
         }
@@ -184,7 +160,7 @@ export function loadJobs(target: any): MagmaJob[] {
     for (const method of methods) {
         if (typeof method === 'function' && '_schedule' in method) {
             jobs.push({
-                handler: wrapEventHandler('job', method, target).bind(target),
+                handler: method.bind(target),
                 schedule: method['_schedule'],
                 options: method['_options'],
                 name: method['_methodName'] || method['name'],
@@ -211,7 +187,7 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
         if (typeof method === 'function' && '_middlewareTrigger' in method) {
             middleware.push({
                 trigger: method['_middlewareTrigger'],
-                action: wrapEventHandler('middleware', method, target).bind(target),
+                action: method.bind(target),
                 name: method['_methodName'] || method['name'],
                 critical: method['_critical'] ?? false,
                 order: method['_order'],
@@ -271,3 +247,68 @@ export const hash = (str: string) => {
     }
     return hash;
 };
+
+/**
+ * Helper function to sanitize messages by removing tool calls and tool results that are not preceded by a tool call or tool result. This function operates on the messages array in place.
+ * @param messages MagmaMessage[] to sanitize
+ */
+export function sanitizeMessages(messages: MagmaMessage[]): void {
+    for (let i = 0; i < messages.length; i++) {
+        // if the message is a tool call
+        if (messages[i].role === 'assistant' && messages[i].getToolCalls().length > 0) {
+            // console.log('Tool call found', messages[i]);
+            // if the message is at the end of the array, we need to remove it
+            if (i === messages.length - 1) {
+                // console.log(
+                //     'Tool call found at the end of the array, removing',
+                //     messages[i]
+                // );
+                messages.pop();
+            } else {
+                // if the message is not at the end of the array, make sure the next message is a tool result
+                if (
+                    messages[i + 1].role === 'user' &&
+                    messages[i + 1].getToolResults().length > 0
+                ) {
+                    // console.log('Tool call found with tool result, continuing');
+                    continue;
+                } else {
+                    // console.log(
+                    //     'Tool call found with no tool result, removing',
+                    //     messages[i]
+                    // );
+                    messages.splice(i, 1);
+                    i--;
+                }
+            }
+            // if the message is a tool result
+        } else if (messages[i].role === 'user' && messages[i].getToolResults().length > 0) {
+            // console.log('Tool result found', messages[i]);
+            // if the message is at the beginning of the array, we need to remove it
+            if (i === 0) {
+                // console.log(
+                //     'Tool result found at the beginning of the array, removing',
+                //     messages[i]
+                // );
+                messages.shift();
+                i--;
+            } else {
+                // if the message is not at the beginning of the array, make sure the previous message is a tool call
+                if (
+                    messages[i - 1].role === 'assistant' &&
+                    messages[i - 1].getToolCalls().length > 0
+                ) {
+                    // console.log('Tool result found with tool call, continuing');
+                    continue;
+                } else {
+                    // console.log(
+                    //     'Tool result found with no tool call, removing',
+                    //     messages[i]
+                    // );
+                    messages.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+    }
+}

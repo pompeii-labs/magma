@@ -732,7 +732,7 @@ export class MagmaAgent {
 
                     toolResult = {
                         id: toolCall.id,
-                        result: result,
+                        result: result ?? 'No result returned',
                         error: false,
                         fn_name: toolCall.fn_name,
                         call: toolCall,

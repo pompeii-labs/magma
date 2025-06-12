@@ -1,4 +1,4 @@
-export type TraceEventType = 'main' | 'middleware' | 'tool_execution' | 'trigger';
+export type TraceEventType = 'completion' | 'middleware' | 'tool_execution';
 export type TraceEventPhase = 'start' | 'end';
 export type TraceEventStatus = 'abort' | 'error' | 'success';
 

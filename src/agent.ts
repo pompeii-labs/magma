@@ -142,17 +142,6 @@ export class MagmaAgent {
     }): Promise<MagmaAssistantMessage | MagmaToolResult> {
         const requestId = Math.random().toString(36).substring(2, 15);
         sanitizeMessages(this.messages);
-        trace.push({
-            type: 'trigger',
-            phase: 'start',
-            requestId,
-            timestamp: Date.now(),
-            data: {
-                message: this.messages.at(-1),
-                parentRequestIds,
-                config,
-            },
-        });
         const tool = args.tool ?? this.tools.find((t) => t.name === args.name);
 
         if (!tool) throw new Error('No tool found to trigger');
@@ -213,6 +202,8 @@ export class MagmaAgent {
                         attempt: 0,
                         signal: this.abortControllers.get(requestId)?.signal,
                         agent: this,
+                        trace,
+                        requestId,
                     });
 
                     if (completion === null) {
@@ -232,20 +223,6 @@ export class MagmaAgent {
                             allowList: [tool.name],
                             trace,
                             requestId,
-                        });
-                        trace.push({
-                            type: 'trigger',
-                            phase: 'end',
-                            status: 'success',
-                            requestId,
-                            timestamp: Date.now(),
-                            data: {
-                                message: this.messages.at(-1),
-                                parentRequestIds,
-                                config,
-                                toolResults: toolResults,
-                                usage: completion.usage, // Individual usage for this specific trigger call
-                            },
                         });
 
                         // Call trace callback if provided
@@ -321,21 +298,6 @@ export class MagmaAgent {
                         );
                     }
 
-                    trace.push({
-                        type: 'trigger',
-                        phase: 'end',
-                        status: 'success',
-                        requestId,
-                        timestamp: Date.now(),
-                        data: {
-                            message: this.messages.at(-1),
-                            parentRequestIds,
-                            config,
-                            result: modifiedMessage,
-                            usage: completion.usage, // Individual usage for this specific trigger call
-                        },
-                    });
-
                     // Call trace callback if provided
                     if (onTrace) {
                         onTrace([...trace]);
@@ -347,20 +309,6 @@ export class MagmaAgent {
 
             return await triggerPromise;
         } catch (error) {
-            trace.push({
-                type: 'trigger',
-                phase: 'end',
-                status: 'error',
-                requestId,
-                timestamp: Date.now(),
-                data: {
-                    message: this.messages.at(-1),
-                    parentRequestIds,
-                    config,
-                    error: error.message,
-                },
-            });
-
             // Call trace callback even on error
             if (onTrace) {
                 onTrace([...trace]);
@@ -403,17 +351,6 @@ export class MagmaAgent {
 
         const requestId = Math.random().toString(36).substring(2, 15);
         sanitizeMessages(this.messages);
-        trace.push({
-            type: 'main',
-            phase: 'start',
-            requestId,
-            timestamp: Date.now(),
-            data: {
-                message: this.messages.at(-1),
-                parentRequestIds,
-                config,
-            },
-        });
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
             const mainPromise = new Promise<MagmaAssistantMessage | null>(async (resolve) => {
@@ -506,6 +443,8 @@ export class MagmaAgent {
                     attempt: 0,
                     signal: this.abortControllers.get(requestId)?.signal,
                     agent: this,
+                    trace,
+                    requestId,
                 });
 
                 if (completion === null) {
@@ -656,21 +595,6 @@ export class MagmaAgent {
                     );
                 }
 
-                trace.push({
-                    type: 'main',
-                    phase: 'end',
-                    status: 'success',
-                    requestId,
-                    timestamp: Date.now(),
-                    data: {
-                        message: this.messages.at(-1),
-                        parentRequestIds,
-                        config,
-                        result: modifiedMessage,
-                        usage: completion.usage, // Individual usage for this specific call
-                    },
-                });
-
                 // Call trace callback if provided
                 if (onTrace) {
                     onTrace([...trace]);
@@ -681,20 +605,6 @@ export class MagmaAgent {
 
             return await mainPromise;
         } catch (error) {
-            trace.push({
-                type: 'main',
-                phase: 'end',
-                status: 'error',
-                requestId,
-                timestamp: Date.now(),
-                data: {
-                    message: this.messages.at(-1),
-                    parentRequestIds,
-                    config,
-                    error: error.message,
-                },
-            });
-
             // Call trace callback even on error
             if (onTrace) {
                 onTrace([...trace]);

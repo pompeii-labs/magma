@@ -13,6 +13,7 @@ import {
     MagmaToolParam,
     MagmaUsage,
     OpenAIProviderConfig,
+    TraceEvent,
 } from '../types';
 import {
     ChatCompletionMessageParam as OpenAIMessageParam,
@@ -35,18 +36,32 @@ export class OpenAIProvider extends Provider {
         attempt = 0,
         signal,
         agent,
+        trace,
+        requestId,
     }: {
         config: MagmaCompletionConfig;
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
+        trace: TraceEvent[];
+        requestId: string;
     }): Promise<MagmaCompletion> {
         try {
             const openai = config.providerConfig.client as OpenAI;
             if (!openai) throw new Error('OpenAI instance not configured');
 
             const openAIConfig = this.convertConfig(config);
+
+            trace.push({
+                type: 'completion',
+                phase: 'start',
+                requestId,
+                timestamp: Date.now(),
+                data: {
+                    message: config.messages.at(-1),
+                },
+            });
 
             if (config.stream) {
                 const stream = await openai.chat.completions.create(
@@ -207,6 +222,15 @@ export class OpenAIProvider extends Provider {
 
                 onStreamChunk?.(null);
 
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'success',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { completion: magmaCompletion },
+                });
+
                 return magmaCompletion;
             } else {
                 const openAICompletion = await openai.chat.completions.create(
@@ -265,13 +289,38 @@ export class OpenAIProvider extends Provider {
                     stop_reason: this.convertStopReason(choice?.finish_reason),
                 };
 
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'success',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { completion: magmaCompletion },
+                });
+
                 return magmaCompletion;
             }
         } catch (error) {
             if (signal?.aborted) {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'abort',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 return null;
             }
             if (error.response && error.response.status === 429) {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
                 }
@@ -285,8 +334,18 @@ export class OpenAIProvider extends Provider {
                     attempt: attempt + 1,
                     signal,
                     agent,
+                    trace,
+                    requestId,
                 });
             } else {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 throw error;
             }
         }

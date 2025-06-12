@@ -23,6 +23,7 @@ import {
     MagmaTool,
     MagmaToolParam,
     MagmaUsage,
+    TraceEvent,
 } from '../types';
 import { cleanParam, sleep } from '../helpers';
 import { type MagmaAgent } from '../agent';
@@ -34,12 +35,16 @@ export class GoogleProvider extends Provider {
         attempt = 0,
         signal,
         agent,
+        trace,
+        requestId,
     }: {
         config: MagmaCompletionConfig;
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
+        trace: TraceEvent[];
+        requestId: string;
     }): Promise<MagmaCompletion> {
         try {
             const google = config.providerConfig.client as GoogleGenerativeAI;
@@ -48,6 +53,16 @@ export class GoogleProvider extends Provider {
             const googleConfig = this.convertConfig(config);
 
             const model = google.getGenerativeModel(googleConfig);
+
+            trace.push({
+                type: 'completion',
+                phase: 'start',
+                requestId,
+                timestamp: Date.now(),
+                data: {
+                    message: config.messages.at(-1),
+                },
+            });
 
             if (config.stream) {
                 const { stream } = await model.generateContentStream(
@@ -179,6 +194,17 @@ export class GoogleProvider extends Provider {
 
                 onStreamChunk?.(null);
 
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'success',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: {
+                        completion: magmaCompletion,
+                    },
+                });
+
                 return magmaCompletion;
             } else {
                 const googleCompletion = await model.generateContent(
@@ -237,13 +263,38 @@ export class GoogleProvider extends Provider {
                               ),
                 };
 
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'success',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { completion: magmaCompletion },
+                });
+
                 return magmaCompletion;
             }
         } catch (error) {
             if (signal?.aborted) {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'abort',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 return null;
             }
             if (error.response && error.response.status === 429) {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
                 }
@@ -257,8 +308,18 @@ export class GoogleProvider extends Provider {
                     attempt: attempt + 1,
                     signal,
                     agent,
+                    trace,
+                    requestId,
                 });
             } else {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: { error: error.message },
+                });
                 throw error;
             }
         }

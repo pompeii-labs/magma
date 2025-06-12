@@ -134,10 +134,10 @@ export class TraceAnalyzer {
      */
     private getEventDetails(event: TraceEvent): string {
         switch (event.type) {
-            case 'main':
+            case 'completion':
                 return event.phase === 'start'
-                    ? 'Main execution started'
-                    : `Main execution ended with status: ${event.status}`;
+                    ? 'Completion started'
+                    : `Completion ended with status: ${event.status}`;
             case 'tool_execution':
                 const toolName =
                     (event.data as any).toolName || (event.data as any).toolCall?.fn_name;
@@ -149,10 +149,6 @@ export class TraceAnalyzer {
                 return event.phase === 'start'
                     ? `Middleware started: ${middlewareName}`
                     : `Middleware ended: ${middlewareName} (${event.status})`;
-            case 'trigger':
-                return event.phase === 'start'
-                    ? 'Trigger started'
-                    : `Trigger ended with status: ${event.status}`;
             default:
                 return `${event.type} ${event.phase}`;
         }

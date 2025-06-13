@@ -7,6 +7,7 @@ import {
     MagmaProvider,
     MagmaStreamChunk,
     MagmaTool,
+    TraceEvent,
 } from '../types';
 import dotenv from 'dotenv';
 
@@ -55,12 +56,16 @@ export abstract class Provider implements ProviderProps {
         attempt = 0,
         signal,
         agent,
+        trace,
+        requestId,
     }: {
         config: MagmaCompletionConfig;
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
+        trace: TraceEvent[];
+        requestId: string;
     }): Promise<MagmaCompletion> {
         config;
         onStreamChunk;

@@ -17,6 +17,7 @@ import {
     MagmaToolCallBlock,
     MagmaToolParam,
     MagmaUsage,
+    TraceEvent,
 } from '../types';
 
 import {
@@ -219,18 +220,32 @@ export class AnthropicProvider extends Provider {
         attempt = 0,
         signal,
         agent,
+        trace,
+        requestId,
     }: {
         config: MagmaCompletionConfig;
         onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
+        trace: TraceEvent[];
+        requestId: string;
     }): Promise<MagmaCompletion | null> {
         try {
             const anthropic = config.providerConfig.client as Anthropic;
             if (!anthropic) throw new Error('Anthropic instance not configured');
 
             const anthropicConfig = this.convertConfig(config);
+
+            trace.push({
+                type: 'completion',
+                phase: 'start',
+                requestId,
+                timestamp: Date.now(),
+                data: {
+                    message: config.messages.at(-1),
+                },
+            });
 
             if (config.stream) {
                 const stream = await anthropic.messages.create(
@@ -406,6 +421,17 @@ export class AnthropicProvider extends Provider {
 
                             onStreamChunk?.(null);
 
+                            trace.push({
+                                type: 'completion',
+                                phase: 'end',
+                                status: 'success',
+                                requestId,
+                                timestamp: Date.now(),
+                                data: {
+                                    completion: magmaCompletion,
+                                },
+                            });
+
                             return magmaCompletion;
                         }
                     }
@@ -494,13 +520,44 @@ export class AnthropicProvider extends Provider {
                     stop_reason: this.convertStopReason(anthropicCompletion.stop_reason),
                 };
 
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'success',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: {
+                        completion: magmaCompletion,
+                    },
+                });
+
                 return magmaCompletion;
             }
         } catch (error) {
             if (signal?.aborted) {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'abort',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: {
+                        error: error.error.message,
+                    },
+                });
                 return null;
             }
             if (error.error?.type === 'rate_limit_error') {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: {
+                        error: error.error.message,
+                    },
+                });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
                 }
@@ -514,8 +571,20 @@ export class AnthropicProvider extends Provider {
                     attempt: attempt + 1,
                     signal,
                     agent,
+                    trace,
+                    requestId,
                 });
             } else {
+                trace.push({
+                    type: 'completion',
+                    phase: 'end',
+                    status: 'error',
+                    requestId,
+                    timestamp: Date.now(),
+                    data: {
+                        error: error.error.message,
+                    },
+                });
                 throw error;
             }
         }

@@ -147,6 +147,7 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
                 name: method['_methodName'] || method['name'],
                 critical: method['_critical'] ?? false,
                 order: method['_order'],
+                id: method['_id'],
             } as MagmaMiddleware);
         }
     }

@@ -1023,65 +1023,42 @@ export class MagmaAgent {
                         middlewarePayload = middlewareResult;
                     }
                 } catch (error) {
-                    const mHash = hash(mdlwr.action.toString());
-                    this.middlewareRetries[mHash] ??= 0;
-                    this.middlewareRetries[mHash] += 1;
+                    console.log('mHash', mdlwr.id);
+                    console.log('this.middlewareRetries', this.middlewareRetries);
+                    this.middlewareRetries[mdlwr.id] ??= 0;
+                    this.middlewareRetries[mdlwr.id] += 1;
+
+                    console.log('this.middlewareRetries', this.middlewareRetries);
 
                     // Add the error to the middlewareErrors array
                     middlewareErrors.push(error.message);
 
-                    if (this.middlewareRetries[mHash] >= kMiddlewareMaxRetries) {
+                    trace.push({
+                        type: 'middleware',
+                        phase: 'end',
+                        status: 'error',
+                        requestId,
+                        timestamp: Date.now(),
+                        data: {
+                            middleware: mdlwr.name,
+                            middlewarePayload,
+                            message: message,
+                            error: error.message,
+                        },
+                    });
+
+                    if (this.middlewareRetries[mdlwr.id] >= kMiddlewareMaxRetries) {
                         this.log(
                             `${trigger} middleware failed to recover after ${kMiddlewareMaxRetries} attempts`
                         );
 
                         if (mdlwr.critical) {
-                            trace.push({
-                                type: 'middleware',
-                                phase: 'end',
-                                status: 'error',
-                                requestId,
-                                timestamp: Date.now(),
-                                data: {
-                                    middleware: mdlwr.name,
-                                    middlewarePayload,
-                                    message: message,
-                                    error: error.message,
-                                },
-                            });
                             return null;
                         } else {
-                            trace.push({
-                                type: 'middleware',
-                                phase: 'end',
-                                status: 'error',
-                                requestId,
-                                timestamp: Date.now(),
-                                data: {
-                                    middleware: mdlwr.name,
-                                    middlewarePayload,
-                                    message: message,
-                                    error: error.message,
-                                },
-                            });
                             middlewareErrors.pop();
-                            delete this.middlewareRetries[mHash];
+                            delete this.middlewareRetries[mdlwr.id];
                             continue;
                         }
-                    } else {
-                        trace.push({
-                            type: 'middleware',
-                            phase: 'end',
-                            status: 'error',
-                            requestId,
-                            timestamp: Date.now(),
-                            data: {
-                                middleware: mdlwr.name,
-                                middlewarePayload,
-                                message: message,
-                                error: error.message,
-                            },
-                        });
                     }
 
                     this.log(
@@ -1128,9 +1105,7 @@ export class MagmaAgent {
 
         if (middlewareErrors.length === 0) {
             // Remove errors for middleware that was just run as everything was OK
-            middleware.forEach(
-                (mdlwr) => delete this.middlewareRetries[hash(mdlwr.action.toString())]
-            );
+            middleware.forEach((mdlwr) => delete this.middlewareRetries[mdlwr.id]);
         } else if (trigger !== 'preToolExecution' && trigger !== 'onToolExecution') {
             throw new Error(middlewareErrors.join('\n'));
         }

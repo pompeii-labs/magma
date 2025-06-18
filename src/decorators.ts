@@ -91,6 +91,8 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
                 _middlewareTrigger?: T;
                 _critical?: boolean;
                 _order?: number;
+                _name?: string;
+                _id?: string;
             }
         >
     ) {
@@ -105,6 +107,8 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         descriptor.value._middlewareTrigger = trigger;
         descriptor.value._critical = options.critical;
         descriptor.value._order = options.order;
+        descriptor.value._name = propertyKey;
+        descriptor.value._id = Math.random().toString(36).substring(2, 15);
         return descriptor;
     };
 }

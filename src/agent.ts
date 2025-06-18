@@ -21,7 +21,6 @@ import {
 } from './types';
 import { Provider } from './providers';
 import {
-    hash,
     loadHooks,
     loadJobs,
     loadMiddleware,

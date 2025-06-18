@@ -1023,12 +1023,8 @@ export class MagmaAgent {
                         middlewarePayload = middlewareResult;
                     }
                 } catch (error) {
-                    console.log('mHash', mdlwr.id);
-                    console.log('this.middlewareRetries', this.middlewareRetries);
                     this.middlewareRetries[mdlwr.id] ??= 0;
                     this.middlewareRetries[mdlwr.id] += 1;
-
-                    console.log('this.middlewareRetries', this.middlewareRetries);
 
                     // Add the error to the middlewareErrors array
                     middlewareErrors.push(error.message);

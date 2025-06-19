@@ -124,7 +124,10 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  * @hook('notification', { session: (req) => req.body.userId })
  * @hook('notification', { session: fetchFromExternal(req) })
  */
-export function hook(hookName: string, options: { session?: MagmaHook['session'] } = {}) {
+export function hook(
+    hookName: string,
+    options: { session?: MagmaHook['session']; description?: string } = {}
+) {
     return function <R extends void>(
         target: object,
         propertyKey: string,
@@ -132,11 +135,13 @@ export function hook(hookName: string, options: { session?: MagmaHook['session']
             ((req: Request, res: Response, agent?: MagmaAgent) => R) & {
                 _hookName?: string;
                 _session?: MagmaHook['session'];
+                _description?: string;
             }
         >
     ) {
         descriptor.value._hookName = hookName;
         descriptor.value._session = options.session;
+        descriptor.value._description = options.description;
     };
 }
 

@@ -94,6 +94,7 @@ export function loadHooks(target: any): MagmaHook[] {
                 name: method['_hookName'],
                 handler: method.bind(target),
                 session: method['_session'],
+                description: method['_description'],
             } as MagmaHook);
         }
     }

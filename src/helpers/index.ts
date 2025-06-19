@@ -81,17 +81,6 @@ export async function sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const hash = (str: string) => {
-    let hash = 0;
-    if (str.length === 0) return hash;
-    for (let i = 0; i < str.length; i++) {
-        const chr = str.charCodeAt(i);
-        hash = (hash << 5) - hash + chr;
-        hash |= 0;
-    }
-    return hash;
-};
-
 /**
  * Helper function to sanitize messages by removing tool calls and tool results that are not preceded by a tool call or tool result. This function operates on the messages array in place.
  * @param messages MagmaMessage[] to sanitize

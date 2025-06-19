@@ -5,4 +5,5 @@ export type MagmaHook = {
     name: string;
     handler: (request: Request, response: Response, agent: MagmaAgent) => Promise<void>;
     session?: 'default' | (string & {}) | ((req: Request) => string | Promise<string>);
+    description?: string;
 };

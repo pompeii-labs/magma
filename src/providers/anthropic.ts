@@ -542,7 +542,12 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error: error.error.message,
+                        error:
+                            error.error?.message ||
+                            error.error ||
+                            error.message ||
+                            error ||
+                            'Unknown error',
                     },
                 });
                 return null;
@@ -555,7 +560,12 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error: error.error.message,
+                        error:
+                            error.error?.message ||
+                            error.error ||
+                            error.message ||
+                            error ||
+                            'Unknown error',
                     },
                 });
                 if (attempt >= MAX_RETRIES) {
@@ -582,7 +592,12 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error: error.error.message,
+                        error:
+                            error.error?.message ||
+                            error.error ||
+                            error.message ||
+                            error ||
+                            'Unknown error',
                     },
                 });
                 throw error;

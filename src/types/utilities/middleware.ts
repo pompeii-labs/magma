@@ -50,7 +50,8 @@ export type MagmaMiddleware = {
     ) =>
         | Promise<MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>>
         | MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>;
-    name?: string;
+    name: string;
     critical?: boolean;
     order?: number;
+    id: string;
 };

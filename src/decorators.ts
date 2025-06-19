@@ -91,6 +91,8 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
                 _middlewareTrigger?: T;
                 _critical?: boolean;
                 _order?: number;
+                _name?: string;
+                _id?: string;
             }
         >
     ) {
@@ -105,6 +107,8 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         descriptor.value._middlewareTrigger = trigger;
         descriptor.value._critical = options.critical;
         descriptor.value._order = options.order;
+        descriptor.value._name = propertyKey;
+        descriptor.value._id = Math.random().toString(36).substring(2, 15);
         return descriptor;
     };
 }
@@ -120,7 +124,10 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  * @hook('notification', { session: (req) => req.body.userId })
  * @hook('notification', { session: fetchFromExternal(req) })
  */
-export function hook(hookName: string, options: { session?: MagmaHook['session'] } = {}) {
+export function hook(
+    hookName: string,
+    options: { session?: MagmaHook['session']; description?: string } = {}
+) {
     return function <R extends void>(
         target: object,
         propertyKey: string,
@@ -128,11 +135,13 @@ export function hook(hookName: string, options: { session?: MagmaHook['session']
             ((req: Request, res: Response, agent?: MagmaAgent) => R) & {
                 _hookName?: string;
                 _session?: MagmaHook['session'];
+                _description?: string;
             }
         >
     ) {
         descriptor.value._hookName = hookName;
         descriptor.value._session = options.session;
+        descriptor.value._description = options.description;
     };
 }
 

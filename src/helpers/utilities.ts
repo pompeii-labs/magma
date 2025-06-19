@@ -94,6 +94,7 @@ export function loadHooks(target: any): MagmaHook[] {
                 name: method['_hookName'],
                 handler: method.bind(target),
                 session: method['_session'],
+                description: method['_description'],
             } as MagmaHook);
         }
     }
@@ -147,6 +148,7 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
                 name: method['_methodName'] || method['name'],
                 critical: method['_critical'] ?? false,
                 order: method['_order'],
+                id: method['_id'],
             } as MagmaMiddleware);
         }
     }

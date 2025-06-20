@@ -10,7 +10,7 @@ export type MagmaCompletionStopReason =
     | 'unknown';
 
 export type MagmaCompletion = {
-    message: MagmaMessage;
+    message: MagmaAssistantMessage;
     provider: MagmaProvider;
     model: string;
     usage: MagmaUsage;

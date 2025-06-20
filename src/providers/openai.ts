@@ -189,7 +189,7 @@ export class OpenAIProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
                     magmaMessage.blocks.push({
@@ -244,7 +244,7 @@ export class OpenAIProvider extends Provider {
                 const choice = openAICompletion.choices[0];
                 const openAIMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (openAIMessage?.content) {
                     magmaMessage.blocks.push({

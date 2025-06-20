@@ -206,7 +206,7 @@ export class GroqProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
                     magmaMessage.blocks.push({
@@ -261,7 +261,7 @@ export class GroqProvider extends Provider {
                 const choice = groqCompletion.choices[0];
                 const groqMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (groqMessage?.content) {
                     magmaMessage.blocks.push({

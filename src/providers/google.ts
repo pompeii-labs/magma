@@ -160,7 +160,7 @@ export class GoogleProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });
@@ -214,7 +214,7 @@ export class GoogleProvider extends Provider {
                     }
                 );
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });

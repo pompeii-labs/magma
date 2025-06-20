@@ -394,7 +394,7 @@ export class AnthropicProvider extends Provider {
                             }
                             break;
                         case 'message_stop': {
-                            let magmaMessage: MagmaMessage = new MagmaMessage({
+                            let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                                 role: 'assistant',
                                 blocks: blockBuffer.map((b) =>
                                     b.type === 'tool_call'
@@ -458,7 +458,7 @@ export class AnthropicProvider extends Provider {
 
                 const blocks = anthropicCompletion.content;
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });

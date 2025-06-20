@@ -60,13 +60,13 @@ export abstract class Provider implements ProviderProps {
         requestId,
     }: {
         config: MagmaCompletionConfig;
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
+        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void> | void;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
         trace: TraceEvent[];
         requestId: string;
-    }): Promise<MagmaCompletion> {
+    }): Promise<MagmaCompletion | null> {
         config;
         onStreamChunk;
         attempt;

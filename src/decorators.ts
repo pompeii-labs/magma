@@ -36,6 +36,10 @@ export function tool(args: {
             }
         >
     ) {
+        if (!descriptor.value) {
+            throw new Error('Tool decorator must be used on a function');
+        }
+
         descriptor.value._toolInfo = {
             name: args.name ?? propertyKey,
             description: args.description,
@@ -63,6 +67,10 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
             }
         >
     ) {
+        if (!descriptor.value) {
+            throw new Error('Tool decorator must be used on a function');
+        }
+
         // Ensure metadata exists on this method's prototype
         if (!descriptor.value._methodName) {
             descriptor.value._methodName = propertyKey;
@@ -104,6 +112,10 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
             throw new Error(`Invalid middleware trigger - ${trigger}`);
         }
 
+        if (!descriptor.value) {
+            throw new Error('Middleware decorator must be used on a function');
+        }
+
         descriptor.value._middlewareTrigger = trigger;
         descriptor.value._critical = options.critical;
         descriptor.value._order = options.order;
@@ -139,6 +151,10 @@ export function hook(
             }
         >
     ) {
+        if (!descriptor.value) {
+            throw new Error('Hook decorator must be used on a function');
+        }
+
         descriptor.value._hookName = hookName;
         descriptor.value._session = options.session;
         descriptor.value._description = options.description;
@@ -164,6 +180,10 @@ export function job(cron: string, options: { timezone?: string } = {}) {
             ((agent?: MagmaAgent) => R) & { _schedule?: string; _options?: { timezone?: string } }
         >
     ) {
+        if (!descriptor.value) {
+            throw new Error('Job decorator must be used on a function');
+        }
+
         descriptor.value._schedule = cron;
         descriptor.value._options = options;
     };

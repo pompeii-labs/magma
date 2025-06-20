@@ -119,7 +119,7 @@ export type MagmaStreamChunk = {
     model: string;
     delta: MagmaAssistantMessage;
     buffer: MagmaAssistantMessage;
-    stop_reason: MagmaCompletionStopReason;
+    stop_reason: MagmaCompletionStopReason | undefined;
     usage: {
         input_tokens: number | null;
         output_tokens: number | null;
@@ -131,7 +131,7 @@ export type MagmaStreamChunk = {
 export class MagmaMessage {
     id?: string | number;
     role: MagmaMessageType['role'];
-    blocks: MagmaContentBlock[];
+    blocks: MagmaContentBlock[] = [];
 
     constructor({ role, content, blocks, id }: MagmaMessageType) {
         this.id = id;
@@ -173,7 +173,8 @@ export class MagmaMessage {
 
     public getReasoning(): string {
         return this.blocks
-            .filter((block) => block.type === 'reasoning' && !block.redacted)
+            .filter((block) => block.type === 'reasoning')
+            .filter((block) => !block.redacted)
             .map((block: MagmaReasoningBlock) => block.reasoning)
             .join('\n');
     }

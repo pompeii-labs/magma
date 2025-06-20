@@ -7,7 +7,6 @@ export const MagmaMiddlewareTriggers = [
     'onToolExecution',
     'preToolExecution',
     'onMainFinish',
-    'postProcess',
 ] as const;
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
@@ -23,9 +22,7 @@ export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =
               ? MagmaToolResult | void
               : T extends 'onMainFinish'
                 ? string | void
-                : T extends 'postProcess'
-                  ? string | void
-                  : never;
+                : never;
 
 export type MagmaMiddlewareParamType<T extends MagmaMiddlewareTriggerType> =
     T extends 'preToolExecution'
@@ -38,9 +35,7 @@ export type MagmaMiddlewareParamType<T extends MagmaMiddlewareTriggerType> =
               ? string
               : T extends 'onMainFinish'
                 ? string
-                : T extends 'postProcess'
-                  ? string
-                  : never;
+                : never;
 
 export type MagmaMiddleware = {
     trigger: MagmaMiddlewareTriggerType;

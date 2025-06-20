@@ -9,7 +9,7 @@
 		"sourceMap": true,
 		"target": "ES2015",
 
-		"strict": false,
+		"strict": true,
 
 		"esModuleInterop": true,
 		"moduleResolution": "node",

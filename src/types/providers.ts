@@ -4,6 +4,7 @@ import {
     GoogleGenerativeAI,
     ModelParams as GoogleModelParams,
     GenerationConfig as GoogleSettings,
+    ToolConfig,
 } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { ChatCompletionCreateParams as GroqSettings } from 'groq-sdk/resources/chat/completions';
@@ -36,7 +37,9 @@ type MagmaGroqSettings = Omit<
     GroqSettings,
     'messages' | 'model' | 'function_call' | 'functions' | 'stream' | 'tools'
 >;
-type MagmaGoogleSettings = Omit<GoogleSettings, 'model'>;
+type MagmaGoogleSettings = Omit<GoogleSettings, 'model'> & {
+    toolConfig?: ToolConfig;
+};
 
 export type OpenAIProviderConfig = {
     client?: object;

@@ -358,6 +358,11 @@ export class GoogleProvider extends Provider {
             functionCallingConfig: {
                 mode: FunctionCallingMode.MODE_UNSPECIFIED,
             },
+            ...(
+                config.providerConfig.settings as MagmaCompletionConfig & {
+                    toolConfig?: ToolConfig;
+                }
+            )?.toolConfig,
         };
 
         const tools: Tool[] = [];
@@ -368,6 +373,11 @@ export class GoogleProvider extends Provider {
 
         const { model, settings } = config.providerConfig as GoogleProviderConfig;
 
+        const cleanSettings = {
+            ...settings,
+            toolConfig: undefined,
+        };
+
         const googleConfig: ModelParams = {
             model,
             tools,
@@ -376,7 +386,9 @@ export class GoogleProvider extends Provider {
                 .filter((m) => m.role === 'system')
                 .map((m) => m.getText())
                 .join('\n'),
-            generationConfig: settings,
+            generationConfig: {
+                ...cleanSettings,
+            },
         };
 
         return googleConfig;

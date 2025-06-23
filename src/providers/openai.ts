@@ -384,8 +384,6 @@ export class OpenAIProvider extends Provider {
 
     // MagmaConfig to Provider-specific config converter
     static override convertConfig(config: MagmaCompletionConfig): ChatCompletionCreateParamsBase {
-        let tool_choice = undefined;
-
         const { model, settings } = config.providerConfig as OpenAIProviderConfig;
 
         const openAIConfig: ChatCompletionCreateParamsBase = {
@@ -393,7 +391,6 @@ export class OpenAIProvider extends Provider {
             model,
             messages: this.convertMessages(config.messages),
             tools: this.convertTools(config.tools),
-            tool_choice: tool_choice,
             ...settings,
         };
 

@@ -61,14 +61,14 @@ export function loadTools(target: any): MagmaTool[] {
 
     for (const method of methods) {
         if (typeof method === 'function' && ('_toolInfo' in method || '_parameterInfo' in method)) {
-            const params: MagmaToolParam[] = method['_parameterInfo'] ?? [];
+            const params: MagmaToolParam[] = (method as any)['_parameterInfo'] ?? [];
             tools.push({
                 target: method.bind(target),
-                name: (method['_toolInfo'] as any)?.name ?? method['_methodName'],
-                description: (method['_toolInfo'] as any)?.description ?? undefined,
+                name: (method as any)['_toolInfo']?.name ?? (method as any)['_methodName'],
+                description: (method as any)['_toolInfo']?.description ?? undefined,
                 params,
-                enabled: (method['_toolInfo'] as any)?.enabled ?? (() => true),
-                cache: (method['_toolInfo'] as any)?.cache ?? false,
+                enabled: (method as any)['_toolInfo']?.enabled ?? (() => true),
+                cache: (method as any)['_toolInfo']?.cache ?? false,
             } as MagmaTool);
         }
     }
@@ -93,8 +93,8 @@ export function loadHooks(target: any): MagmaHook[] {
             hooks.push({
                 name: method['_hookName'],
                 handler: method.bind(target),
-                session: method['_session'],
-                description: method['_description'],
+                session: (method as any)['_session'],
+                description: (method as any)['_description'],
             } as MagmaHook);
         }
     }
@@ -118,9 +118,9 @@ export function loadJobs(target: any): MagmaJob[] {
         if (typeof method === 'function' && '_schedule' in method) {
             jobs.push({
                 handler: method.bind(target),
-                schedule: method['_schedule'],
-                options: method['_options'],
-                name: method['_methodName'] || method['name'],
+                schedule: (method as any)['_schedule'],
+                options: (method as any)['_options'],
+                name: (method as any)['_methodName'] || (method as any)['name'],
             } as MagmaJob);
         }
     }
@@ -145,10 +145,10 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
             middleware.push({
                 trigger: method['_middlewareTrigger'],
                 action: method.bind(target),
-                name: method['_methodName'] || method['name'],
-                critical: method['_critical'] ?? false,
-                order: method['_order'],
-                id: method['_id'],
+                name: (method as any)['_methodName'] || (method as any)['name'],
+                critical: (method as any)['_critical'] ?? false,
+                order: (method as any)['_order'],
+                id: (method as any)['_id'],
             } as MagmaMiddleware);
         }
     }

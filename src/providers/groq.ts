@@ -23,29 +23,19 @@ import {
     ChatCompletionUserMessageParam,
 } from 'groq-sdk/resources/chat/completions';
 import Groq from 'groq-sdk';
-import { cleanParam, sleep } from '../helpers';
+import { cleanParam, parseErrorToString, sleep } from '../helpers';
 import { safeJSON } from 'groq-sdk/core';
 import type { MagmaAgent } from '../agent';
 
 export class GroqProvider extends Provider {
     static override convertConfig(config: MagmaCompletionConfig): GroqConfig {
-        let tool_choice = undefined;
-
-        if (config.tool_choice === 'auto') tool_choice = 'auto';
-        else if (config.tool_choice === 'required') tool_choice = 'required';
-        else if (typeof config.tool_choice === 'string')
-            tool_choice = { type: 'function', function: { name: config.tool_choice } };
-
         const { model, settings } = config.providerConfig as GroqProviderConfig;
 
-        delete config.providerConfig;
-
         const groqConfig: GroqConfig = {
-            ...config,
+            stream: config.stream,
             model,
             messages: this.convertMessages(config.messages),
             tools: this.convertTools(config.tools),
-            tool_choice,
             ...settings,
         };
 
@@ -68,7 +58,7 @@ export class GroqProvider extends Provider {
         agent: MagmaAgent;
         trace: TraceEvent[];
         requestId: string;
-    }): Promise<MagmaCompletion> {
+    }): Promise<MagmaCompletion | null> {
         try {
             const groq = config.providerConfig.client as Groq;
             if (!groq) throw new Error('Groq instance not configured');
@@ -106,7 +96,7 @@ export class GroqProvider extends Provider {
                     [index: number]: ChatCompletionChunk.Choice.Delta.ToolCall;
                 } = {};
 
-                let stopReason: MagmaCompletionStopReason = null;
+                let stopReason: MagmaCompletionStopReason = 'unknown';
 
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
@@ -121,7 +111,7 @@ export class GroqProvider extends Provider {
                             cache_write_tokens: null,
                             cache_read_tokens: null,
                         },
-                        stop_reason: null,
+                        stop_reason: undefined,
                     };
 
                     const choice = chunk.choices[0];
@@ -138,8 +128,12 @@ export class GroqProvider extends Provider {
                         if (!streamedToolCalls[index]) {
                             streamedToolCalls[index] = toolCall;
                         } else {
-                            streamedToolCalls[index].function.arguments +=
-                                toolCall.function.arguments;
+                            if (streamedToolCalls[index].function) {
+                                streamedToolCalls[index].function.arguments +=
+                                    toolCall.function?.arguments ?? '';
+                            } else {
+                                streamedToolCalls[index].function = toolCall.function;
+                            }
                         }
                     }
 
@@ -161,10 +155,12 @@ export class GroqProvider extends Provider {
                             (toolCall) => ({
                                 type: 'tool_call',
                                 tool_call: {
-                                    id: streamedToolCalls[toolCall.index].id,
-                                    fn_name: toolCall.function.name,
-                                    fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                                    fn_args_buffer: toolCall.function.arguments,
+                                    id:
+                                        streamedToolCalls[toolCall.index].id ??
+                                        'gen-' + Math.random().toString(36).substring(2, 15),
+                                    fn_name: toolCall.function?.name ?? '',
+                                    fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                                    fn_args_buffer: toolCall.function?.arguments ?? '',
                                 },
                             })
                         );
@@ -194,10 +190,12 @@ export class GroqProvider extends Provider {
                         ).map((toolCall) => ({
                             type: 'tool_call',
                             tool_call: {
-                                id: toolCall.id,
-                                fn_name: toolCall.function.name,
-                                fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                                fn_args_buffer: toolCall.function.arguments,
+                                id:
+                                    toolCall.id ??
+                                    'gen-' + Math.random().toString(36).substring(2, 15),
+                                fn_name: toolCall.function?.name ?? '',
+                                fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                                fn_args_buffer: toolCall.function?.arguments ?? '',
                             },
                         }));
                         magmaStreamChunk.buffer.blocks.push(...bufferToolCallBlocks);
@@ -206,7 +204,7 @@ export class GroqProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
                     magmaMessage.blocks.push({
@@ -220,10 +218,10 @@ export class GroqProvider extends Provider {
                     const toolCallBlocks: MagmaToolCallBlock[] = toolCalls.map((toolCall) => ({
                         type: 'tool_call',
                         tool_call: {
-                            id: toolCall.id,
-                            fn_name: toolCall.function.name,
-                            fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                            fn_args_buffer: toolCall.function.arguments,
+                            id: toolCall.id ?? 'gen-' + Math.random().toString(36).substring(2, 15),
+                            fn_name: toolCall.function?.name ?? '',
+                            fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                            fn_args_buffer: toolCall.function?.arguments ?? '',
                         },
                     }));
                     magmaMessage.blocks.push(...toolCallBlocks);
@@ -261,7 +259,7 @@ export class GroqProvider extends Provider {
                 const choice = groqCompletion.choices[0];
                 const groqMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (groqMessage?.content) {
                     magmaMessage.blocks.push({
@@ -295,8 +293,8 @@ export class GroqProvider extends Provider {
                     model: groqConfig.model,
                     message: magmaMessage,
                     usage: {
-                        input_tokens: groqCompletion.usage.prompt_tokens,
-                        output_tokens: groqCompletion.usage.completion_tokens,
+                        input_tokens: groqCompletion.usage?.prompt_tokens ?? 0,
+                        output_tokens: groqCompletion.usage?.completion_tokens ?? 0,
                         cache_write_tokens: 0,
                         cache_read_tokens: 0,
                     },
@@ -322,18 +320,18 @@ export class GroqProvider extends Provider {
                     status: 'abort',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 return null;
             }
-            if (error.response && error.response.status === 429) {
+            if ((error as any).response && (error as any).response.status === 429) {
                 trace.push({
                     type: 'completion',
                     phase: 'end',
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
@@ -358,16 +356,14 @@ export class GroqProvider extends Provider {
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 throw error;
             }
         }
     }
 
-    static override convertTools(tools: MagmaTool[]): GroqTool[] | undefined {
-        if (tools.length === 0) return undefined;
-
+    static override convertTools(tools: MagmaTool[]): GroqTool[] {
         const groqTools: GroqTool[] = [];
 
         for (const tool of tools) {
@@ -391,17 +387,18 @@ export class GroqProvider extends Provider {
 
     // MagmaMessage to Provider-specific message converter
     static override convertMessages(messages: MagmaMessage[]): GroqMessageParam[] {
-        const groqMessages: GroqMessageParam[] = [];
+        const groqMessages: GroqMessageParam[] = messages
+            .filter((m) => m.role === 'system')
+            .map((m) => ({
+                role: m.role,
+                content: m.getText(),
+            }));
 
         for (const message of messages) {
             if ('id' in message) delete message.id;
 
             switch (message.role) {
                 case 'system':
-                    groqMessages.push({
-                        role: 'system',
-                        content: message.getText(),
-                    });
                     break;
                 case 'assistant':
                     const reasoning = message.getReasoning();

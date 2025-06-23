@@ -12,7 +12,7 @@ export const cleanParam = (
 ): Record<string, any> => {
     param.required && param.key && requiredList?.push(param.key);
 
-    const objectRequiredParams = [];
+    const objectRequiredParams: string[] = [];
 
     switch (param.type) {
         case 'array':
@@ -89,13 +89,8 @@ export function sanitizeMessages(messages: MagmaMessage[]): void {
     for (let i = 0; i < messages.length; i++) {
         // if the message is a tool call
         if (messages[i].role === 'assistant' && messages[i].getToolCalls().length > 0) {
-            // console.log('Tool call found', messages[i]);
             // if the message is at the end of the array, we need to remove it
             if (i === messages.length - 1) {
-                // console.log(
-                //     'Tool call found at the end of the array, removing',
-                //     messages[i]
-                // );
                 messages.pop();
             } else {
                 // if the message is not at the end of the array, make sure the next message is a tool result
@@ -103,26 +98,16 @@ export function sanitizeMessages(messages: MagmaMessage[]): void {
                     messages[i + 1].role === 'user' &&
                     messages[i + 1].getToolResults().length > 0
                 ) {
-                    // console.log('Tool call found with tool result, continuing');
                     continue;
                 } else {
-                    // console.log(
-                    //     'Tool call found with no tool result, removing',
-                    //     messages[i]
-                    // );
                     messages.splice(i, 1);
                     i--;
                 }
             }
             // if the message is a tool result
         } else if (messages[i].role === 'user' && messages[i].getToolResults().length > 0) {
-            // console.log('Tool result found', messages[i]);
             // if the message is at the beginning of the array, we need to remove it
             if (i === 0) {
-                // console.log(
-                //     'Tool result found at the beginning of the array, removing',
-                //     messages[i]
-                // );
                 messages.shift();
                 i--;
             } else {
@@ -131,18 +116,27 @@ export function sanitizeMessages(messages: MagmaMessage[]): void {
                     messages[i - 1].role === 'assistant' &&
                     messages[i - 1].getToolCalls().length > 0
                 ) {
-                    // console.log('Tool result found with tool call, continuing');
                     continue;
                 } else {
-                    // console.log(
-                    //     'Tool result found with no tool call, removing',
-                    //     messages[i]
-                    // );
                     messages.splice(i, 1);
                     i--;
                 }
             }
         }
+    }
+}
+
+export function parseErrorToString(error: unknown): string {
+    return parseErrorToError(error).message;
+}
+
+export function parseErrorToError(error: unknown): Error {
+    if (error instanceof Error) {
+        return error;
+    } else if (typeof error === 'string') {
+        return new Error(error);
+    } else {
+        return new Error(JSON.stringify(error));
     }
 }
 

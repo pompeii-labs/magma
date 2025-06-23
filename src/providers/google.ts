@@ -25,7 +25,7 @@ import {
     MagmaUsage,
     TraceEvent,
 } from '../types';
-import { cleanParam, sleep } from '../helpers';
+import { cleanParam, parseErrorToString, sleep } from '../helpers';
 import { type MagmaAgent } from '../agent';
 
 export class GoogleProvider extends Provider {
@@ -45,7 +45,7 @@ export class GoogleProvider extends Provider {
         agent: MagmaAgent;
         trace: TraceEvent[];
         requestId: string;
-    }): Promise<MagmaCompletion> {
+    }): Promise<MagmaCompletion | null> {
         try {
             const google = config.providerConfig.client as GoogleGenerativeAI;
             if (!google) throw new Error('Google instance not configured');
@@ -86,7 +86,7 @@ export class GoogleProvider extends Provider {
 
                 let id = crypto.randomUUID();
 
-                let stopReason: MagmaCompletionStopReason = null;
+                let stopReason: MagmaCompletionStopReason = 'unknown';
 
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
@@ -101,7 +101,7 @@ export class GoogleProvider extends Provider {
                             cache_write_tokens: null,
                             cache_read_tokens: null,
                         },
-                        stop_reason: null,
+                        stop_reason: undefined,
                     };
 
                     if (chunk.usageMetadata) {
@@ -118,8 +118,9 @@ export class GoogleProvider extends Provider {
                         contentBuffer += chunk.text();
                     }
 
-                    if (chunk.functionCalls()?.length > 0) {
-                        for (const toolCall of chunk.functionCalls()) {
+                    const functionCalls = chunk.functionCalls();
+                    if (functionCalls && functionCalls.length > 0) {
+                        for (const toolCall of functionCalls) {
                             streamedToolCalls.push({
                                 id: crypto.randomUUID(),
                                 fn_name: toolCall.name,
@@ -129,7 +130,7 @@ export class GoogleProvider extends Provider {
                         }
                     }
 
-                    if (chunk.candidates[0]?.finishReason) {
+                    if (chunk.candidates?.[0]?.finishReason) {
                         if (streamedToolCalls.length > 0) {
                             stopReason = 'tool_call';
                         } else {
@@ -160,7 +161,7 @@ export class GoogleProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });
@@ -214,7 +215,7 @@ export class GoogleProvider extends Provider {
                     }
                 );
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });
@@ -250,8 +251,10 @@ export class GoogleProvider extends Provider {
                     model: googleConfig.model,
                     message: magmaMessage,
                     usage: {
-                        input_tokens: googleCompletion.response.usageMetadata.promptTokenCount,
-                        output_tokens: googleCompletion.response.usageMetadata.candidatesTokenCount,
+                        input_tokens:
+                            googleCompletion.response.usageMetadata?.promptTokenCount ?? 0,
+                        output_tokens:
+                            googleCompletion.response.usageMetadata?.candidatesTokenCount ?? 0,
                         cache_write_tokens: 0,
                         cache_read_tokens: 0,
                     },
@@ -259,7 +262,7 @@ export class GoogleProvider extends Provider {
                         magmaMessage.getToolCalls().length > 0
                             ? 'tool_call'
                             : this.convertStopReason(
-                                  googleCompletion.response.candidates[0]?.finishReason
+                                  googleCompletion.response.candidates?.[0]?.finishReason ?? ''
                               ),
                 };
 
@@ -282,18 +285,18 @@ export class GoogleProvider extends Provider {
                     status: 'abort',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 return null;
             }
-            if (error.response && error.response.status === 429) {
+            if ((error as any).response && (error as any).response.status === 429) {
                 trace.push({
                     type: 'completion',
                     phase: 'end',
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
@@ -318,7 +321,7 @@ export class GoogleProvider extends Provider {
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 throw error;
             }
@@ -326,9 +329,7 @@ export class GoogleProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): FunctionDeclaration[] | undefined {
-        if (tools.length === 0) return undefined;
-
+    static override convertTools(tools: MagmaTool[]): FunctionDeclaration[] {
         const googleTools: FunctionDeclaration[] = [];
 
         for (const tool of tools) {
@@ -357,25 +358,25 @@ export class GoogleProvider extends Provider {
             functionCallingConfig: {
                 mode: FunctionCallingMode.MODE_UNSPECIFIED,
             },
+            ...(
+                config.providerConfig.settings as MagmaCompletionConfig & {
+                    toolConfig?: ToolConfig;
+                }
+            )?.toolConfig,
         };
-
-        if (config.tool_choice === 'auto')
-            toolConfig.functionCallingConfig.mode = FunctionCallingMode.AUTO;
-        else if (config.tool_choice === 'required')
-            toolConfig.functionCallingConfig.mode = FunctionCallingMode.ANY;
-        else if (typeof config.tool_choice === 'string') {
-            toolConfig.functionCallingConfig.mode = FunctionCallingMode.ANY;
-            toolConfig.functionCallingConfig.allowedFunctionNames = [config.tool_choice];
-        }
 
         const tools: Tool[] = [];
 
-        functionDeclarations &&
-            tools.push({
-                functionDeclarations,
-            });
+        tools.push({
+            functionDeclarations,
+        });
 
         const { model, settings } = config.providerConfig as GoogleProviderConfig;
+
+        const cleanSettings = {
+            ...settings,
+            toolConfig: undefined,
+        };
 
         const googleConfig: ModelParams = {
             model,
@@ -385,7 +386,9 @@ export class GoogleProvider extends Provider {
                 .filter((m) => m.role === 'system')
                 .map((m) => m.getText())
                 .join('\n'),
-            generationConfig: settings,
+            generationConfig: {
+                ...cleanSettings,
+            },
         };
 
         return googleConfig;
@@ -490,7 +493,9 @@ export class GoogleProvider extends Provider {
         return googleMessages;
     }
 
-    static override convertStopReason(stop_reason: FinishReason): MagmaCompletionStopReason {
+    static override convertStopReason(
+        stop_reason: FinishReason | (string & {})
+    ): MagmaCompletionStopReason {
         switch (stop_reason) {
             case FinishReason.RECITATION:
             case FinishReason.STOP:

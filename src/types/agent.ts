@@ -6,6 +6,5 @@ export type MagmaCompletionConfig = {
     providerConfig: MagmaProviderConfig;
     messages: MagmaMessage[];
     tools: MagmaTool[];
-    tool_choice?: 'auto' | 'required' | (string & {});
     stream?: boolean;
 };

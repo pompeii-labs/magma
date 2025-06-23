@@ -28,44 +28,30 @@ import {
     Message,
     TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
-import { cleanParam, sleep } from '../helpers';
+import { cleanParam, parseErrorToString, sleep } from '../helpers';
 import { safeJSON } from '@anthropic-ai/sdk/core';
 import type { MagmaAgent } from '../agent';
 
 export class AnthropicProvider extends Provider {
     static override convertConfig(config: MagmaCompletionConfig): AnthropicConfig {
-        let tool_choice = undefined;
-
-        if (config.tool_choice === 'auto') tool_choice = { type: 'auto' };
-        else if (config.tool_choice === 'required') tool_choice = { type: 'any' };
-        else if (typeof config.tool_choice === 'string')
-            tool_choice = { type: 'tool', name: config.tool_choice };
-
         const { model, settings } = config.providerConfig as AnthropicProviderConfig;
 
-        delete config.providerConfig;
-
         const anthropicConfig: AnthropicConfig = {
-            ...config,
+            stream: config.stream,
             model,
             messages: this.convertMessages(config.messages),
             max_tokens: settings?.max_tokens ?? (model.includes('claude-3-5') ? 8192 : 4096),
             tools: this.convertTools(config.tools),
-            tool_choice,
             system: config.messages
                 .filter((m) => m.role === 'system')
-                .flatMap((m: MagmaSystemMessage) =>
+                .flatMap((m) =>
                     m.blocks
                         .filter((b) => b.type === 'text')
-                        .map((b) => {
-                            const textBlock: TextBlockParam = {
-                                type: 'text',
-                                text: b.text,
-                                cache_control: b.cache ? { type: 'ephemeral' } : undefined,
-                            };
-
-                            return textBlock;
-                        })
+                        .map((b) => ({
+                            type: 'text',
+                            text: b.text,
+                            cache_control: b.cache ? { type: 'ephemeral' } : undefined,
+                        }))
                 ),
             ...settings,
         };
@@ -205,7 +191,7 @@ export class AnthropicProvider extends Provider {
             }
         }
 
-        if (anthropicMessages.length === 0 || anthropicMessages.at(0).role != 'user')
+        if (anthropicMessages.length === 0 || anthropicMessages[0].role != 'user')
             anthropicMessages.unshift({
                 role: 'user',
                 content: 'begin',
@@ -264,9 +250,9 @@ export class AnthropicProvider extends Provider {
                     cache_read_tokens: 0,
                 };
 
-                let id = stream._request_id;
+                let id = stream._request_id ?? 'gen-' + Math.random().toString(36).substring(2, 15);
 
-                let stopReason: MagmaCompletionStopReason = null;
+                let stopReason: MagmaCompletionStopReason = 'unknown';
 
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
@@ -281,7 +267,7 @@ export class AnthropicProvider extends Provider {
                             cache_write_tokens: null,
                             cache_read_tokens: null,
                         },
-                        stop_reason: null,
+                        stop_reason: undefined,
                     };
 
                     switch (chunk.type) {
@@ -291,8 +277,9 @@ export class AnthropicProvider extends Provider {
                             usage.input_tokens += chunk.message.usage.input_tokens;
                             usage.output_tokens += chunk.message.usage.output_tokens;
                             usage.cache_write_tokens +=
-                                chunk.message.usage.cache_creation_input_tokens;
-                            usage.cache_read_tokens += chunk.message.usage.cache_read_input_tokens;
+                                chunk.message.usage.cache_creation_input_tokens ?? 0;
+                            usage.cache_read_tokens +=
+                                chunk.message.usage.cache_read_input_tokens ?? 0;
                             magmaStreamChunk.usage.input_tokens = chunk.message.usage.input_tokens;
                             magmaStreamChunk.usage.output_tokens =
                                 chunk.message.usage.output_tokens;
@@ -394,7 +381,7 @@ export class AnthropicProvider extends Provider {
                             }
                             break;
                         case 'message_stop': {
-                            let magmaMessage: MagmaMessage = new MagmaMessage({
+                            let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                                 role: 'assistant',
                                 blocks: blockBuffer.map((b) =>
                                     b.type === 'tool_call'
@@ -403,7 +390,8 @@ export class AnthropicProvider extends Provider {
                                               tool_call: {
                                                   ...b.tool_call,
                                                   fn_args:
-                                                      safeJSON(b.tool_call.fn_args_buffer) ?? {},
+                                                      safeJSON(b.tool_call.fn_args_buffer ?? '') ??
+                                                      {},
                                                   fn_args_buffer: b.tool_call.fn_args_buffer,
                                               },
                                           }
@@ -416,7 +404,7 @@ export class AnthropicProvider extends Provider {
                                 model: anthropicConfig.model,
                                 message: magmaMessage,
                                 usage: usage,
-                                stop_reason: stopReason,
+                                stop_reason: stopReason ?? 'unknown',
                             };
 
                             onStreamChunk?.(null);
@@ -442,7 +430,7 @@ export class AnthropicProvider extends Provider {
                                   type: 'tool_call',
                                   tool_call: {
                                       ...b.tool_call,
-                                      fn_args: safeJSON(b.tool_call.fn_args_buffer) ?? {},
+                                      fn_args: safeJSON(b.tool_call.fn_args_buffer ?? '') ?? {},
                                       fn_args_buffer: b.tool_call.fn_args_buffer,
                                   },
                               }
@@ -451,6 +439,8 @@ export class AnthropicProvider extends Provider {
 
                     onStreamChunk?.(magmaStreamChunk);
                 }
+
+                return null;
             } else {
                 const anthropicCompletion = (await anthropic.messages.create(anthropicConfig, {
                     signal,
@@ -458,7 +448,7 @@ export class AnthropicProvider extends Provider {
 
                 const blocks = anthropicCompletion.content;
 
-                let magmaMessage: MagmaMessage = new MagmaMessage({
+                let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
                     role: 'assistant',
                     blocks: [],
                 });
@@ -477,7 +467,7 @@ export class AnthropicProvider extends Provider {
                                 tool_call: {
                                     id: block.id,
                                     fn_name: block.name,
-                                    fn_args: block.input,
+                                    fn_args: block.input ?? {},
                                 },
                             });
                             break;
@@ -514,8 +504,9 @@ export class AnthropicProvider extends Provider {
                     usage: {
                         input_tokens: anthropicCompletion.usage.input_tokens,
                         output_tokens: anthropicCompletion.usage.output_tokens,
-                        cache_write_tokens: anthropicCompletion.usage.cache_creation_input_tokens,
-                        cache_read_tokens: anthropicCompletion.usage.cache_read_input_tokens,
+                        cache_write_tokens:
+                            anthropicCompletion.usage.cache_creation_input_tokens ?? 0,
+                        cache_read_tokens: anthropicCompletion.usage.cache_read_input_tokens ?? 0,
                     },
                     stop_reason: this.convertStopReason(anthropicCompletion.stop_reason),
                 };
@@ -542,17 +533,12 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error:
-                            error.error?.message ||
-                            error.error ||
-                            error.message ||
-                            error ||
-                            'Unknown error',
+                        error: parseErrorToString(error),
                     },
                 });
                 return null;
             }
-            if (error.error?.type === 'rate_limit_error') {
+            if ((error as any).error?.type === 'rate_limit_error') {
                 trace.push({
                     type: 'completion',
                     phase: 'end',
@@ -560,12 +546,7 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error:
-                            error.error?.message ||
-                            error.error ||
-                            error.message ||
-                            error ||
-                            'Unknown error',
+                        error: parseErrorToString(error),
                     },
                 });
                 if (attempt >= MAX_RETRIES) {
@@ -592,12 +573,7 @@ export class AnthropicProvider extends Provider {
                     requestId,
                     timestamp: Date.now(),
                     data: {
-                        error:
-                            error.error?.message ||
-                            error.error ||
-                            error.message ||
-                            error ||
-                            'Unknown error',
+                        error: parseErrorToString(error),
                     },
                 });
                 throw error;
@@ -606,9 +582,7 @@ export class AnthropicProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): AnthropicTool[] | undefined {
-        if (tools.length === 0) return undefined;
-
+    static override convertTools(tools: MagmaTool[]): AnthropicTool[] {
         const anthropicTools: AnthropicTool[] = [];
         for (const tool of tools) {
             const baseObject: MagmaToolParam = {
@@ -630,7 +604,7 @@ export class AnthropicProvider extends Provider {
     }
 
     static override convertStopReason(
-        stop_reason: Message['stop_reason']
+        stop_reason: Message['stop_reason'] | (string & {})
     ): MagmaCompletionStopReason {
         switch (stop_reason) {
             case 'end_turn':

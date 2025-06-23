@@ -19,7 +19,7 @@ import {
     ChatCompletionMessageParam as OpenAIMessageParam,
     ChatCompletionTool as OpenAITool,
 } from 'openai/resources/index';
-import { cleanParam, sleep } from '../helpers';
+import { cleanParam, parseErrorToString, sleep } from '../helpers';
 import {
     ChatCompletion,
     ChatCompletionChunk,
@@ -46,7 +46,7 @@ export class OpenAIProvider extends Provider {
         agent: MagmaAgent;
         trace: TraceEvent[];
         requestId: string;
-    }): Promise<MagmaCompletion> {
+    }): Promise<MagmaCompletion | null> {
         try {
             const openai = config.providerConfig.client as OpenAI;
             if (!openai) throw new Error('OpenAI instance not configured');
@@ -85,7 +85,7 @@ export class OpenAIProvider extends Provider {
                     [index: number]: ChatCompletionChunk.Choice.Delta.ToolCall;
                 } = {};
 
-                let stopReason: MagmaCompletionStopReason = null;
+                let stopReason: MagmaCompletionStopReason = 'unknown';
 
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
@@ -100,7 +100,7 @@ export class OpenAIProvider extends Provider {
                             cache_write_tokens: null,
                             cache_read_tokens: null,
                         },
-                        stop_reason: null,
+                        stop_reason: undefined,
                     };
 
                     const choice = chunk.choices[0];
@@ -117,8 +117,12 @@ export class OpenAIProvider extends Provider {
                         if (!streamedToolCalls[index]) {
                             streamedToolCalls[index] = toolCall;
                         } else {
-                            streamedToolCalls[index].function.arguments +=
-                                toolCall.function.arguments;
+                            if (streamedToolCalls[index].function) {
+                                streamedToolCalls[index].function.arguments +=
+                                    toolCall.function?.arguments ?? '';
+                            } else {
+                                streamedToolCalls[index].function = toolCall.function;
+                            }
                         }
                     }
 
@@ -144,10 +148,12 @@ export class OpenAIProvider extends Provider {
                             (toolCall) => ({
                                 type: 'tool_call',
                                 tool_call: {
-                                    id: streamedToolCalls[toolCall.index].id,
-                                    fn_name: toolCall.function.name,
-                                    fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                                    fn_args_buffer: toolCall.function.arguments,
+                                    id:
+                                        streamedToolCalls[toolCall.index].id ??
+                                        'gen-' + Math.random().toString(36).substring(2, 15),
+                                    fn_name: toolCall.function?.name ?? '',
+                                    fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                                    fn_args_buffer: toolCall.function?.arguments ?? '',
                                 },
                             })
                         );
@@ -177,10 +183,12 @@ export class OpenAIProvider extends Provider {
                         ).map((toolCall) => ({
                             type: 'tool_call',
                             tool_call: {
-                                id: toolCall.id,
-                                fn_name: toolCall.function.name,
-                                fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                                fn_args_buffer: toolCall.function.arguments,
+                                id:
+                                    toolCall.id ??
+                                    'gen-' + Math.random().toString(36).substring(2, 15),
+                                fn_name: toolCall.function?.name ?? '',
+                                fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                                fn_args_buffer: toolCall.function?.arguments ?? '',
                             },
                         }));
                         magmaStreamChunk.buffer.blocks.push(...bufferToolCallBlocks);
@@ -189,7 +197,7 @@ export class OpenAIProvider extends Provider {
                     onStreamChunk?.(magmaStreamChunk);
                 }
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (contentBuffer.length > 0) {
                     magmaMessage.blocks.push({
@@ -203,10 +211,10 @@ export class OpenAIProvider extends Provider {
                     const toolCallBlocks: MagmaToolCallBlock[] = toolCalls.map((toolCall) => ({
                         type: 'tool_call',
                         tool_call: {
-                            id: toolCall.id,
-                            fn_name: toolCall.function.name,
-                            fn_args: safeJSON(toolCall.function.arguments) ?? {},
-                            fn_args_buffer: toolCall.function.arguments,
+                            id: toolCall.id ?? 'gen-' + Math.random().toString(36).substring(2, 15),
+                            fn_name: toolCall.function?.name ?? '',
+                            fn_args: safeJSON(toolCall.function?.arguments ?? '') ?? {},
+                            fn_args_buffer: toolCall.function?.arguments ?? '',
                         },
                     }));
                     magmaMessage.blocks.push(...toolCallBlocks);
@@ -244,7 +252,7 @@ export class OpenAIProvider extends Provider {
                 const choice = openAICompletion.choices[0];
                 const openAIMessage = choice?.message;
 
-                let magmaMessage = new MagmaMessage({ role: 'assistant', blocks: [] });
+                let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
                 if (openAIMessage?.content) {
                     magmaMessage.blocks.push({
@@ -279,12 +287,12 @@ export class OpenAIProvider extends Provider {
                     message: magmaMessage,
                     usage: {
                         input_tokens:
-                            openAICompletion.usage.prompt_tokens -
-                            (openAICompletion.usage.prompt_tokens_details?.cached_tokens ?? 0),
-                        output_tokens: openAICompletion.usage.completion_tokens,
+                            openAICompletion.usage?.prompt_tokens ??
+                            0 - (openAICompletion.usage?.prompt_tokens_details?.cached_tokens ?? 0),
+                        output_tokens: openAICompletion.usage?.completion_tokens ?? 0,
                         cache_write_tokens: 0,
                         cache_read_tokens:
-                            openAICompletion.usage.prompt_tokens_details?.cached_tokens ?? 0,
+                            openAICompletion.usage?.prompt_tokens_details?.cached_tokens ?? 0,
                     },
                     stop_reason: this.convertStopReason(choice?.finish_reason),
                 };
@@ -308,18 +316,18 @@ export class OpenAIProvider extends Provider {
                     status: 'abort',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 return null;
             }
-            if (error.response && error.response.status === 429) {
+            if ((error as any).response && (error as any).response.status === 429) {
                 trace.push({
                     type: 'completion',
                     phase: 'end',
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 if (attempt >= MAX_RETRIES) {
                     throw new Error(`Rate limited after ${MAX_RETRIES} attempts`);
@@ -344,7 +352,7 @@ export class OpenAIProvider extends Provider {
                     status: 'error',
                     requestId,
                     timestamp: Date.now(),
-                    data: { error: error.message },
+                    data: { error: parseErrorToString(error) },
                 });
                 throw error;
             }
@@ -352,8 +360,7 @@ export class OpenAIProvider extends Provider {
     }
 
     // Tool schema to LLM function call converter
-    static override convertTools(tools: MagmaTool[]): OpenAITool[] | undefined {
-        if (tools.length === 0) return undefined;
+    static override convertTools(tools: MagmaTool[]): OpenAITool[] {
         const openAITools: OpenAITool[] = [];
 
         for (const tool of tools) {
@@ -377,23 +384,13 @@ export class OpenAIProvider extends Provider {
 
     // MagmaConfig to Provider-specific config converter
     static override convertConfig(config: MagmaCompletionConfig): ChatCompletionCreateParamsBase {
-        let tool_choice = undefined;
-
-        if (config.tool_choice === 'auto') tool_choice = 'auto';
-        else if (config.tool_choice === 'required') tool_choice = 'required';
-        else if (typeof config.tool_choice === 'string')
-            tool_choice = { type: 'function', function: { name: config.tool_choice } };
-
         const { model, settings } = config.providerConfig as OpenAIProviderConfig;
 
-        delete config.providerConfig;
-
         const openAIConfig: ChatCompletionCreateParamsBase = {
-            ...config,
+            stream: config.stream,
             model,
             messages: this.convertMessages(config.messages),
             tools: this.convertTools(config.tools),
-            tool_choice: tool_choice,
             ...settings,
         };
 
@@ -402,24 +399,24 @@ export class OpenAIProvider extends Provider {
 
     // MagmaMessage to Provider-specific message converter
     static override convertMessages(messages: MagmaMessage[]): OpenAIMessageParam[] {
-        const openAIMessages: OpenAIMessageParam[] = [];
+        const openAIMessages: OpenAIMessageParam[] = messages
+            .filter((m) => m.role === 'system')
+            .map((m) => ({
+                role: m.role,
+                content: m.blocks
+                    .filter((b) => b.type === 'text')
+                    .map((b) => ({
+                        type: 'text',
+                        text: b.text,
+                        cache_control: b.cache ? { type: 'ephemeral' } : undefined,
+                    })),
+            }));
 
         for (const message of messages) {
             if ('id' in message) delete message.id;
 
             switch (message.role) {
                 case 'system':
-                    openAIMessages.push({
-                        role: 'system',
-                        content: message.blocks.map(
-                            (b) =>
-                                ({
-                                    type: 'text',
-                                    text: message.getText(),
-                                    cache_control: b.cache ? { type: 'ephemeral' } : undefined,
-                                }) as any
-                        ),
-                    });
                     break;
                 case 'assistant':
                     const reasoning = message.getReasoning();

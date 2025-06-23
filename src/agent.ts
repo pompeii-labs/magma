@@ -107,13 +107,7 @@ export class MagmaAgent {
         try {
             await this.onCleanup();
         } catch (error) {
-            if (error instanceof Error) {
-                this.log(`Error during cleanup: ${error.message}`);
-            } else if (typeof error === 'string') {
-                this.log(`Error during cleanup: ${error}`);
-            } else {
-                this.log(`Error during cleanup: ${JSON.stringify(error)}`);
-            }
+            this.log(`Error during cleanup: ${parseErrorToString(error)}`)
         } finally {
             this._cleanup();
         }
@@ -168,7 +162,6 @@ export class MagmaAgent {
 
                         for (const [key, controller] of this.abortControllers.entries()) {
                             if (!parentRequestIds.includes(key)) {
-                                this.log(`Aborting and removing controller for request ${key}`);
                                 controller.abort();
                                 this.abortControllers.delete(key);
                             }
@@ -177,7 +170,6 @@ export class MagmaAgent {
                         const abortController = new AbortController();
                         this.abortControllers.set(requestId, abortController);
                         abortController.signal.onabort = () => {
-                            this.log(`Abort controller for request ${requestId} aborted`);
                             this.abortControllers.delete(requestId);
                             return resolve(null);
                         };
@@ -251,9 +243,6 @@ export class MagmaAgent {
 
                         // Ensure the abort controller is still active
                         if (!this.abortControllers.has(requestId)) {
-                            this.log(
-                                `Controller for request ${requestId} not found, returning null`
-                            );
                             return resolve(null);
                         }
 
@@ -388,9 +377,6 @@ export class MagmaAgent {
 
                             // If the abort controller is not active, return null
                             if (!this.abortControllers.has(requestId)) {
-                                this.log(
-                                    `Controller for request ${requestId} not found, returning null`
-                                );
                                 return resolve(null);
                             }
 

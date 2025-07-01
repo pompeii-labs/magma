@@ -107,7 +107,7 @@ export class MagmaAgent {
         try {
             await this.onCleanup();
         } catch (error) {
-            this.log(`Error during cleanup: ${parseErrorToString(error)}`)
+            this.log(`Error during cleanup: ${parseErrorToString(error)}`);
         } finally {
             this._cleanup();
         }

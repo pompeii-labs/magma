@@ -203,10 +203,6 @@ export class MagmaAgent {
                             // If the preCompletion middleware fails, we should remove the last message
                             this.messages.pop();
 
-                            this.log(
-                                `Error in preCompletion middleware: ${parseErrorToString(error)}`
-                            );
-
                             // Return the error message as the assistant message
                             return resolve(
                                 new MagmaAssistantMessage({
@@ -285,10 +281,6 @@ export class MagmaAgent {
                             // If the onCompletion middleware fails, we should remove the last message
                             this.messages.pop();
 
-                            this.log(
-                                `Error in onCompletion middleware: ${parseErrorToString(error)}`
-                            );
-
                             // Add the error message to the messages array
                             this.addMessage({
                                 role: 'system',
@@ -330,10 +322,6 @@ export class MagmaAgent {
                             } catch (error) {
                                 this.messages.pop();
 
-                                this.log(
-                                    `Error in preToolExecution middleware: ${parseErrorToString(error)}`
-                                );
-
                                 this.addMessage({
                                     role: 'system',
                                     content: parseErrorToString(error),
@@ -362,6 +350,7 @@ export class MagmaAgent {
                                 requestId,
                             });
 
+                            // @TODO: Why isn't this being used?
                             const onToolExecutionMiddlewareResult =
                                 await this.runOnToolExecutionMiddleware({
                                     message: toolResultsUserMessage,
@@ -369,19 +358,13 @@ export class MagmaAgent {
                                     requestId,
                                 });
 
-                            if (!onToolExecutionMiddlewareResult) {
-                                throw new Error(
-                                    `Catastrophic error: failed onToolExecution middleware ${kMiddlewareMaxRetries} times`
-                                );
-                            }
-
                             // If the abort controller is not active, return null
                             if (!this.abortControllers.has(requestId)) {
                                 return resolve(null);
                             }
 
                             // Add the tool results to the messages array
-                            this.messages.push(toolResultsUserMessage);
+                            this.messages.push(onToolExecutionMiddlewareResult);
 
                             // Trigger another completion because last message was a tool call
                             return resolve(
@@ -406,10 +389,6 @@ export class MagmaAgent {
                             // If the onMainFinish middleware fails, we should remove the last message
                             this.messages.pop();
 
-                            this.log(
-                                `Error in onMainFinish middleware: ${parseErrorToString(error)}`
-                            );
-
                             // Add the error message to the messages array
                             this.addMessage({
                                 role: 'system',
@@ -423,6 +402,12 @@ export class MagmaAgent {
                                     trace,
                                     onTrace,
                                 })
+                            );
+                        }
+
+                        if (!onMainFinishMiddlewareResult) {
+                            throw new Error(
+                                `Catastrophic error: failed onMainFinish middleware ${kMiddlewareMaxRetries} times`
                             );
                         }
 
@@ -786,6 +771,8 @@ export class MagmaAgent {
                             });
                         } catch (error) {
                             let errorMessage = parseErrorToString(error);
+                            this.log(`Error in preCompletion middleware: ${errorMessage}`);
+
                             trace.push({
                                 type: 'middleware',
                                 phase: 'end',
@@ -881,6 +868,8 @@ export class MagmaAgent {
                             });
                         } catch (error) {
                             let errorMessage = parseErrorToString(error);
+                            this.log(`Error in onCompletion middleware: ${errorMessage}`);
+
                             this.middlewareRetries[mdlwr.id] =
                                 (this.middlewareRetries[mdlwr.id] ?? 0) + 1;
 
@@ -896,7 +885,17 @@ export class MagmaAgent {
                                 },
                             });
                             if (this.middlewareRetries[mdlwr.id] >= kMiddlewareMaxRetries) {
-                                return null;
+                                if (mdlwr.critical) {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, and is critical. Returning null...`
+                                    );
+                                    return null;
+                                } else {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, but is not critical. Continuing...`
+                                    );
+                                    continue;
+                                }
                             }
                             throw new Error(errorMessage);
                         }
@@ -982,6 +981,8 @@ export class MagmaAgent {
                             });
                         } catch (error) {
                             let errorMessage = parseErrorToString(error);
+                            this.log(`Error in onMainFinish middleware: ${errorMessage}`);
+
                             this.middlewareRetries[mdlwr.id] =
                                 (this.middlewareRetries[mdlwr.id] ?? 0) + 1;
 
@@ -997,7 +998,17 @@ export class MagmaAgent {
                                 },
                             });
                             if (this.middlewareRetries[mdlwr.id] >= kMiddlewareMaxRetries) {
-                                return null;
+                                if (mdlwr.critical) {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, and is critical. Returning null...`
+                                    );
+                                    return null;
+                                } else {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, but is not critical. Continuing...`
+                                    );
+                                    continue;
+                                }
                             }
                             throw new Error(errorMessage);
                         }
@@ -1078,6 +1089,8 @@ export class MagmaAgent {
                             });
                         } catch (error) {
                             let errorMessage = parseErrorToString(error);
+                            this.log(`Error in preToolExecution middleware: ${errorMessage}`);
+
                             this.middlewareRetries[mdlwr.id] =
                                 (this.middlewareRetries[mdlwr.id] ?? 0) + 1;
 
@@ -1093,7 +1106,17 @@ export class MagmaAgent {
                                 },
                             });
                             if (this.middlewareRetries[mdlwr.id] >= kMiddlewareMaxRetries) {
-                                return null;
+                                if (mdlwr.critical) {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, and is critical. Returning null...`
+                                    );
+                                    return null;
+                                } else {
+                                    this.log(
+                                        `Middleware ${mdlwr.name} failed, but is not critical. Continuing...`
+                                    );
+                                    continue;
+                                }
                             }
                             throw new Error(errorMessage);
                         }
@@ -1116,7 +1139,7 @@ export class MagmaAgent {
         message: MagmaUserMessage;
         trace: TraceEvent[];
         requestId: string;
-    }): Promise<MagmaUserMessage | null> {
+    }): Promise<MagmaUserMessage> {
         // get onToolExecution middleware
         const onToolExecutionMiddleware = this.middleware.filter(
             (f) => f.trigger === 'onToolExecution'
@@ -1158,8 +1181,6 @@ export class MagmaAgent {
                             toolResult.tool_result = middlewareResult;
                         }
 
-                        delete this.middlewareRetries[mdlwr.id];
-
                         trace.push({
                             type: 'middleware',
                             phase: 'end',
@@ -1173,8 +1194,6 @@ export class MagmaAgent {
                         });
                     } catch (error) {
                         let errorMessage = parseErrorToString(error);
-                        this.middlewareRetries[mdlwr.id] =
-                            (this.middlewareRetries[mdlwr.id] ?? 0) + 1;
 
                         trace.push({
                             type: 'middleware',
@@ -1189,10 +1208,6 @@ export class MagmaAgent {
                         });
 
                         this.log(`Error in onToolExecution middleware: ${errorMessage}`);
-
-                        if (this.middlewareRetries[mdlwr.id] >= kMiddlewareMaxRetries) {
-                            return null;
-                        }
 
                         toolResult.tool_result.result = errorMessage;
                         toolResult.tool_result.error = true;

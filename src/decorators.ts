@@ -87,7 +87,9 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
  */
 export function middleware<T extends MagmaMiddlewareTriggerType>(
     trigger: T,
-    options: { critical?: boolean; order?: number } = { critical: false }
+    options: T extends 'preCompletion' | 'onToolExecution'
+        ? { order?: number }
+        : { critical?: boolean; order?: number } = {}
 ) {
     return function <
         R extends MagmaMiddlewareReturnType<T> | Promise<MagmaMiddlewareReturnType<T>>,
@@ -117,7 +119,10 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         }
 
         descriptor.value._middlewareTrigger = trigger;
-        descriptor.value._critical = options.critical;
+        if ('critical' in options) {
+            descriptor.value._critical = options.critical;
+        }
+        descriptor.value._critical ??= true;
         descriptor.value._order = options.order;
         descriptor.value._name = propertyKey;
         descriptor.value._id = Math.random().toString(36).substring(2, 15);

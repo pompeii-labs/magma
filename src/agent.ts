@@ -350,7 +350,6 @@ export class MagmaAgent {
                                 requestId,
                             });
 
-                            // @TODO: Why isn't this being used?
                             const onToolExecutionMiddlewareResult =
                                 await this.runOnToolExecutionMiddleware({
                                     message: toolResultsUserMessage,

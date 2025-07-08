@@ -117,8 +117,6 @@ export class MagmaAgent {
         this.abortControllers.forEach((controller) => controller.abort());
         this.abortControllers.clear();
 
-        this.messages = [];
-
         this.log('Agent cleanup complete');
     }
 

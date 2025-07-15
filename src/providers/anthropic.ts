@@ -493,8 +493,7 @@ export class AnthropicProvider extends Provider {
                 }
 
                 if (magmaMessage.blocks.length === 0) {
-                    console.log(JSON.stringify(anthropicCompletion, null, 2));
-                    throw new Error('Anthropic completion was null');
+                    return null;
                 }
 
                 const magmaCompletion: MagmaCompletion = {

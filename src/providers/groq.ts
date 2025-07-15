@@ -284,8 +284,7 @@ export class GroqProvider extends Provider {
                 }
 
                 if (magmaMessage.blocks.length === 0) {
-                    console.log(JSON.stringify(groqCompletion.choices[0], null, 2));
-                    throw new Error('Groq completion was null');
+                    return null;
                 }
 
                 const magmaCompletion: MagmaCompletion = {

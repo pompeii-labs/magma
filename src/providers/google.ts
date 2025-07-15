@@ -242,8 +242,7 @@ export class GoogleProvider extends Provider {
                 }
 
                 if (magmaMessage.blocks.length === 0) {
-                    console.log(JSON.stringify(googleCompletion.response, null, 2));
-                    throw new Error('Google completion was null');
+                    return null;
                 }
 
                 const magmaCompletion: MagmaCompletion = {

@@ -277,8 +277,7 @@ export class OpenAIProvider extends Provider {
                 }
 
                 if (magmaMessage.blocks.length === 0) {
-                    console.log(JSON.stringify(openAICompletion.choices[0], null, 2));
-                    throw new Error('OpenAI completion was null');
+                    return null;
                 }
 
                 const magmaCompletion: MagmaCompletion = {

@@ -40,7 +40,7 @@ export type MagmaToolParam =
     | MagmaToolNumberParam
     | MagmaToolBooleanParam;
 
-export type MagmaToolReturnType = string | Record<string, any>;
+export type MagmaToolReturnType = string | Record<string, any> | void;
 
 // Target in-code function that a MagmaTool maps to
 export type MagmaToolTarget = (

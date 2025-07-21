@@ -254,7 +254,7 @@ export class OpenAIProvider extends Provider {
 
                 let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
-                if (openAIMessage?.content) {
+                if (openAIMessage?.content?.length !== undefined) {
                     magmaMessage.blocks.push({
                         type: 'text',
                         text: openAIMessage.content,

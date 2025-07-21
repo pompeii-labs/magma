@@ -630,7 +630,7 @@ export class MagmaAgent {
                         const result = await tool.target(toolCall, this);
 
                         if (!result) {
-                            this.log(`Tool execution failed for ${toolCall.fn_name}()`);
+                            this.log(`No result returned for ${toolCall.fn_name}()`);
                         }
 
                         toolResult = {
@@ -744,7 +744,7 @@ export class MagmaAgent {
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
-                            if (middlewareResult) {
+                            if (middlewareResult !== undefined) {
                                 this.log(
                                     `${mdlwr.name} middleware modified text block` +
                                         '\n' +
@@ -839,7 +839,7 @@ export class MagmaAgent {
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
-                            if (middlewareResult) {
+                            if (middlewareResult !== undefined) {
                                 this.log(
                                     `${mdlwr.name} middleware modified text block` +
                                         '\n' +
@@ -952,7 +952,7 @@ export class MagmaAgent {
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
-                            if (middlewareResult) {
+                            if (middlewareResult !== undefined) {
                                 this.log(
                                     `${mdlwr.name} middleware modified text block` +
                                         '\n' +
@@ -1067,7 +1067,7 @@ export class MagmaAgent {
                                 this
                             )) as MagmaToolCall;
                             // if the middleware has a return value, we should update the tool call in the result message
-                            if (middlewareResult) {
+                            if (middlewareResult !== undefined) {
                                 toolCall.tool_call = middlewareResult;
                             }
 
@@ -1174,7 +1174,7 @@ export class MagmaAgent {
                             this
                         )) as MagmaToolResult;
                         // if the middleware has a return value, we should update the tool result in the result message
-                        if (middlewareResult) {
+                        if (middlewareResult !== undefined) {
                             toolResult.tool_result = middlewareResult;
                         }
 

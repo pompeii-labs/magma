@@ -87,6 +87,8 @@ export class OpenAIProvider extends Provider {
 
                 let stopReason: MagmaCompletionStopReason = 'unknown';
 
+                let contentReceived: boolean = false;
+
                 for await (const chunk of stream) {
                     let magmaStreamChunk: MagmaStreamChunk = {
                         id: chunk.id,
@@ -165,11 +167,12 @@ export class OpenAIProvider extends Provider {
                             type: 'text',
                             text: delta.content,
                         };
+                        contentReceived = true;
                         magmaStreamChunk.delta.blocks.push(textBlock);
                         contentBuffer += delta.content;
                     }
 
-                    if (contentBuffer.length > 0) {
+                    if (contentReceived) {
                         const bufferTextBlock: MagmaTextBlock = {
                             type: 'text',
                             text: contentBuffer,
@@ -199,7 +202,7 @@ export class OpenAIProvider extends Provider {
 
                 let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
 
-                if (contentBuffer.length > 0) {
+                if (contentReceived) {
                     magmaMessage.blocks.push({
                         type: 'text',
                         text: contentBuffer,

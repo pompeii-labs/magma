@@ -160,7 +160,7 @@ export class OpenAIProvider extends Provider {
                         magmaStreamChunk.delta.blocks.push(...toolCallBlocks);
                     }
 
-                    if (delta?.content) {
+                    if (delta?.content?.length !== undefined) {
                         const textBlock: MagmaTextBlock = {
                             type: 'text',
                             text: delta.content,

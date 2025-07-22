@@ -37,6 +37,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import cron from 'node-cron';
+import { WebSocket } from 'ws';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const kMiddlewareMaxRetries = 5;
@@ -45,11 +46,15 @@ type AgentProps = MagmaProviderConfig & {
     verbose?: boolean;
     messageContext?: number;
     stream?: boolean;
+    sessionId?: string;
 };
 
 export class MagmaAgent {
     verbose?: boolean;
     stream: boolean = false;
+    public ws: WebSocket | null = null;
+    public sessionId: string;
+
     private providerConfig: MagmaProviderConfig = {
         provider: 'openai',
         model: 'gpt-4.1',
@@ -65,6 +70,7 @@ export class MagmaAgent {
         this.messageContext = args?.messageContext ?? 20;
         this.verbose = args?.verbose ?? false;
         this.stream = args?.stream ?? false;
+        this.sessionId = args?.sessionId ?? '';
 
         args ??= {
             provider: 'anthropic',
@@ -101,7 +107,15 @@ export class MagmaAgent {
      * Optional method to receive input from the user
      * @param message message object received from the user - type to be defined by extending class
      */
-    public async receive?(message: any): Promise<void> {}
+    public async receive?(message: any): Promise<void> { }
+
+    /**
+     * Sends data to the connected client depending on the medium (ws, SSE, etc)
+     * @param message any data object to be sent to the client
+     */
+    public async send(message: Record<string, any>): Promise<void> { }
+
+    public async onWsClose(code: number, reason?: string): Promise<void> { }
 
     public async cleanup(): Promise<void> {
         try {

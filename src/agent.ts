@@ -37,7 +37,6 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import cron from 'node-cron';
-import { WebSocket } from 'ws';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const kMiddlewareMaxRetries = 5;
@@ -52,7 +51,6 @@ type AgentProps = MagmaProviderConfig & {
 export class MagmaAgent {
     verbose?: boolean;
     stream: boolean = false;
-    public ws: WebSocket | null = null;
     public sessionId: string;
 
     private providerConfig: MagmaProviderConfig = {

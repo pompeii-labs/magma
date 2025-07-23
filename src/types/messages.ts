@@ -136,19 +136,16 @@ export class MagmaMessage {
     constructor({ role, content, blocks, id }: MagmaMessageType) {
         this.id = id;
         this.role = role;
-        if (content && blocks) {
-            throw new Error('Cannot provide both content and blocks to MagmaMessage constructor');
-        }
 
-        if (content || content === '') {
+        if (blocks) {
+            this.blocks = blocks;
+        } else if (content !== undefined && content !== null) {
             this.blocks = [
                 {
                     type: 'text',
                     text: content,
                 },
             ];
-        } else if (blocks) {
-            this.blocks = blocks;
         }
     }
 

@@ -135,6 +135,7 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  * @param hookName name of the hook
  * @param options configuration options for the hook
  * @param options.session session configuration for the hook
+ * @param options.setup arguments to pass to the agent's setup function before the hook handler is called
  * Examples:
  * @hook('notification') -> POST /hooks/notification
  * @hook('notification', { session: 'default' })
@@ -143,7 +144,7 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  */
 export function hook(
     hookName: string,
-    options: { session?: MagmaHook['session']; description?: string } = {}
+    options: { session?: MagmaHook['session']; description?: string; setup?: MagmaHook['setup'] } = {}
 ) {
     return function <R extends void>(
         target: object,
@@ -153,6 +154,7 @@ export function hook(
                 _hookName?: string;
                 _session?: MagmaHook['session'];
                 _description?: string;
+                _setup?: MagmaHook['setup'];
             }
         >
     ) {
@@ -163,6 +165,7 @@ export function hook(
         descriptor.value._hookName = hookName;
         descriptor.value._session = options.session;
         descriptor.value._description = options.description;
+        descriptor.value._setup = options.setup;
     };
 }
 

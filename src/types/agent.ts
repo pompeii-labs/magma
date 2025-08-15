@@ -8,3 +8,5 @@ export type MagmaCompletionConfig = {
     tools: MagmaTool[];
     stream?: boolean;
 };
+
+export type MagmaSendFunction = (message: Record<string, any>) => Promise<void> | void;

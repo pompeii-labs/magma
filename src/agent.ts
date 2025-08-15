@@ -22,6 +22,7 @@ import {
     MagmaTextBlock,
     MagmaToolCallBlock,
     MagmaToolCall,
+    MagmaSendFunction,
 } from './types';
 import { Provider } from './providers';
 import {
@@ -57,7 +58,6 @@ export class MagmaAgent {
         provider: 'openai',
         model: 'gpt-4.1',
     };
-    private retryCount: number;
     private messages: MagmaMessage[];
     private middlewareRetries: Record<string, number>;
     private messageContext: number;
@@ -85,7 +85,6 @@ export class MagmaAgent {
         this.setProviderConfig(providerConfig);
 
         this.messages = [];
-        this.retryCount = 0;
         this.middlewareRetries = {};
 
         this.scheduledJobs = [];
@@ -111,7 +110,6 @@ export class MagmaAgent {
      * Sends data to the connected client depending on the medium (ws, SSE, etc)
      * @param message any data object to be sent to the client
      */
-    public async send(message: Record<string, any>): Promise<void> {}
 
     public async onWsClose(code: number, reason?: string): Promise<void> {}
 
@@ -149,34 +147,27 @@ export class MagmaAgent {
      *
      * @throws Will rethrow the error if no `onError` handler is defined
      */
-    public async main(args?: {
+    public async main(args: {
         config?: MagmaProviderConfig;
-        parentRequestIds?: string[];
+        send: MagmaSendFunction;
+        userMessage: MagmaUserMessage;
+        originIndex?: number;
+        messages?: MagmaMessage[];
         trace?: TraceEvent[];
         onTrace?: (trace: TraceEvent[]) => void;
     }): Promise<MagmaAssistantMessage | null> {
-        const { config, parentRequestIds = [], trace = [], onTrace } = args ?? {};
+        const { config, trace = [], onTrace, send, userMessage } = args;
+        let originIndex = args.originIndex;
+        const localMessages = [
+            ...(args?.messages ?? this.messages.filter((m) => m.role !== 'system')),
+        ];
 
         const requestId = Math.random().toString(36).substring(2, 15);
-        sanitizeMessages(this.messages);
         try {
             // this promise will resolve when either main finishes or the abort controller is aborted
             const mainPromise = new Promise<MagmaAssistantMessage | null>(
                 async (resolve, reject) => {
                     try {
-                        // if we have an abort controller, abort it
-                        // create a new abort controller for this request
-                        // add an onabort handler to the abort controller that will resolve the promise with null
-                        // if the abort controller is aborted
-                        // if the abort controller is not aborted, the promise will resolve with the result of the main function
-
-                        for (const [key, controller] of this.abortControllers.entries()) {
-                            if (!parentRequestIds.includes(key)) {
-                                controller.abort();
-                                this.abortControllers.delete(key);
-                            }
-                        }
-
                         const abortController = new AbortController();
                         this.abortControllers.set(requestId, abortController);
                         abortController.signal.onabort = () => {
@@ -184,22 +175,12 @@ export class MagmaAgent {
                             return resolve(null);
                         };
 
-                        // Find the most recent user message
-                        let userMessage: MagmaUserMessage | null = null;
-                        let userMessageIndex: number | null = null;
-                        for (let i = this.messages.length - 1; i >= 0; i--) {
-                            if (this.messages[i].role === 'user') {
-                                userMessage = this.messages[i] as MagmaUserMessage;
-                                userMessageIndex = i;
-                                break;
-                            }
-                        }
+                        // Add the new user message and save its index
+                        let userMessageIndex: number = localMessages.length;
+                        if (originIndex === undefined) originIndex = userMessageIndex;
+                        localMessages.push(userMessage);
 
-                        // If we don't have a last user message, we can't generate a response
-                        if (userMessage === null || userMessageIndex === null) {
-                            this.log('Cannot generate message without user input');
-                            return resolve(null);
-                        }
+                        sanitizeMessages(localMessages);
 
                         // Run the preCompletion middleware
                         let preCompletionMiddlewareResult: MagmaUserMessage;
@@ -208,10 +189,11 @@ export class MagmaAgent {
                                 message: userMessage,
                                 trace,
                                 requestId,
+                                send,
                             });
                         } catch (error) {
                             // If the preCompletion middleware fails, we should remove the last message
-                            this.messages.pop();
+                            localMessages.pop();
 
                             // Return the error message as the assistant message
                             return resolve(
@@ -223,7 +205,7 @@ export class MagmaAgent {
                         }
 
                         // Update the last user message with the result of the preCompletion middleware
-                        this.messages[userMessageIndex] = preCompletionMiddlewareResult;
+                        localMessages[userMessageIndex] = preCompletionMiddlewareResult;
 
                         // Save the starting provider config
                         const startingProviderConfig = this.providerConfig;
@@ -236,12 +218,17 @@ export class MagmaAgent {
                         // Get the provider for this request
                         const provider = Provider.factory(this.providerConfig.provider);
 
+                        const completionMessages =
+                            this.messageContext === -1
+                                ? localMessages
+                                : localMessages.slice(-this.messageContext);
+
                         // Create the completion config for this request
                         const completionConfig: MagmaCompletionConfig = {
                             providerConfig: this.providerConfig,
                             messages: [
                                 ...this.getSystemPrompts().map((s) => new MagmaSystemMessage(s)),
-                                ...this.getMessages(this.messageContext),
+                                ...completionMessages,
                             ],
                             stream: this.stream,
                             tools: this.tools.filter((t) => t.enabled(this)),
@@ -256,6 +243,7 @@ export class MagmaAgent {
                         const completion = await provider.makeCompletionRequest({
                             config: completionConfig,
                             onStreamChunk: this.onStreamChunk.bind(this),
+                            send,
                             attempt: 0,
                             signal: this.abortControllers.get(requestId)?.signal,
                             agent: this,
@@ -277,7 +265,7 @@ export class MagmaAgent {
                         this.onUsageUpdate(completion.usage);
 
                         // Add the completion message to the messages array
-                        this.messages.push(completion.message);
+                        localMessages.push(completion.message);
 
                         // Run the onCompletion middleware
                         let onCompletionMiddlewareResult: MagmaAssistantMessage | null;
@@ -286,22 +274,28 @@ export class MagmaAgent {
                                 message: completion.message as MagmaAssistantMessage,
                                 trace,
                                 requestId,
+                                send,
                             });
                         } catch (error) {
                             // If the onCompletion middleware fails, we should remove the last message
-                            this.messages.pop();
+                            localMessages.pop();
 
                             // Add the error message to the messages array
-                            this.addMessage({
-                                role: 'system',
-                                content: parseErrorToString(error),
-                            });
+                            localMessages.push(
+                                new MagmaMessage({
+                                    role: 'system',
+                                    content: parseErrorToString(error),
+                                })
+                            );
 
                             // Trigger another completion with the error message as context
                             return resolve(
                                 await this.main({
                                     config,
-                                    parentRequestIds: [...parentRequestIds, requestId],
+                                    send,
+                                    messages: localMessages,
+                                    userMessage,
+                                    originIndex,
                                     trace,
                                     onTrace,
                                 })
@@ -317,7 +311,7 @@ export class MagmaAgent {
                         }
 
                         // Update the last message with the result of the onCompletion middleware
-                        this.messages[this.messages.length - 1] = onCompletionMiddlewareResult;
+                        localMessages[localMessages.length - 1] = onCompletionMiddlewareResult;
 
                         // If the onCompletion middleware returns a tool call, we should execute the tools
                         if (onCompletionMiddlewareResult.getToolCalls().length > 0) {
@@ -328,19 +322,25 @@ export class MagmaAgent {
                                         message: onCompletionMiddlewareResult,
                                         trace,
                                         requestId,
+                                        send,
                                     });
                             } catch (error) {
-                                this.messages.pop();
+                                localMessages.pop();
 
-                                this.addMessage({
-                                    role: 'system',
-                                    content: parseErrorToString(error),
-                                });
+                                localMessages.push(
+                                    new MagmaMessage({
+                                        role: 'system',
+                                        content: parseErrorToString(error),
+                                    })
+                                );
 
                                 return resolve(
                                     await this.main({
                                         config,
-                                        parentRequestIds: [...parentRequestIds, requestId],
+                                        send,
+                                        messages: localMessages,
+                                        userMessage,
+                                        originIndex,
                                         trace,
                                         onTrace,
                                     })
@@ -358,6 +358,7 @@ export class MagmaAgent {
                                 message: preToolExecutionMiddlewareResult,
                                 trace,
                                 requestId,
+                                send,
                             });
 
                             const onToolExecutionMiddlewareResult =
@@ -365,6 +366,7 @@ export class MagmaAgent {
                                     message: toolResultsUserMessage,
                                     trace,
                                     requestId,
+                                    send,
                                 });
 
                             // If the abort controller is not active, return null
@@ -372,14 +374,14 @@ export class MagmaAgent {
                                 return resolve(null);
                             }
 
-                            // Add the tool results to the messages array
-                            this.messages.push(onToolExecutionMiddlewareResult);
-
-                            // Trigger another completion because last message was a tool call
+                            // Trigger another completion with the tool result because last message was a tool call
                             return resolve(
                                 await this.main({
                                     config,
-                                    parentRequestIds: [...parentRequestIds, requestId],
+                                    send,
+                                    messages: localMessages,
+                                    userMessage: onToolExecutionMiddlewareResult,
+                                    originIndex,
                                     trace,
                                     onTrace,
                                 })
@@ -393,21 +395,27 @@ export class MagmaAgent {
                                 message: onCompletionMiddlewareResult,
                                 trace,
                                 requestId,
+                                send,
                             });
                         } catch (error) {
                             // If the onMainFinish middleware fails, we should remove the last message
-                            this.messages.pop();
+                            localMessages.pop();
 
                             // Add the error message to the messages array
-                            this.addMessage({
-                                role: 'system',
-                                content: parseErrorToString(error),
-                            });
+                            localMessages.push(
+                                new MagmaMessage({
+                                    role: 'system',
+                                    content: parseErrorToString(error),
+                                })
+                            );
 
                             return resolve(
                                 await this.main({
                                     config,
-                                    parentRequestIds: [...parentRequestIds, requestId],
+                                    send,
+                                    messages: localMessages,
+                                    userMessage,
+                                    originIndex,
                                     trace,
                                     onTrace,
                                 })
@@ -427,6 +435,9 @@ export class MagmaAgent {
                         if (onTrace) {
                             onTrace([...trace]);
                         }
+
+                        // update the main agent message history
+                        this.messages.push(...localMessages.slice(originIndex));
 
                         return resolve(onMainFinishMiddlewareResult);
                     } catch (error) {
@@ -596,11 +607,13 @@ export class MagmaAgent {
         allowList = [],
         trace,
         requestId,
+        send,
     }: {
         message: MagmaAssistantMessage;
         allowList?: string[];
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaUserMessage> {
         try {
             let toolResultBlocks: MagmaToolResultBlock[] = [];
@@ -639,7 +652,7 @@ export class MagmaAgent {
                             },
                         });
 
-                        const result = await tool.target(toolCall, this);
+                        const result = await tool.target(toolCall, send, this);
 
                         if (!result) {
                             this.log(`No result returned for ${toolCall.fn_name}()`);
@@ -665,8 +678,6 @@ export class MagmaAgent {
                                 result: toolResult,
                             },
                         });
-
-                        this.retryCount = 0;
                     } catch (error) {
                         const errorMessage = `Tool Execution Failed for ${toolCall.fn_name}() - ${parseErrorToString(error)}`;
                         this.log(errorMessage);
@@ -713,10 +724,12 @@ export class MagmaAgent {
         message,
         trace,
         requestId,
+        send,
     }: {
         message: MagmaUserMessage;
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaUserMessage> {
         // get preCompletion middleware
         const preCompletionMiddleware = this.middleware.filter(
@@ -753,6 +766,7 @@ export class MagmaAgent {
                             // run the middleware on the text block
                             const middlewareResult = (await mdlwr.action(
                                 textBlock.text,
+                                send,
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
@@ -810,10 +824,12 @@ export class MagmaAgent {
         message,
         trace,
         requestId,
+        send,
     }: {
         message: MagmaAssistantMessage;
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaAssistantMessage | null> {
         // get onCompletion middleware
         const onCompletionMiddleware = this.middleware.filter((f) => f.trigger === 'onCompletion');
@@ -848,6 +864,7 @@ export class MagmaAgent {
                             // run the middleware on the text block
                             const middlewareResult = (await mdlwr.action(
                                 textBlock.text,
+                                send,
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
@@ -923,10 +940,12 @@ export class MagmaAgent {
         message,
         trace,
         requestId,
+        send,
     }: {
         message: MagmaAssistantMessage;
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaAssistantMessage | null> {
         // get onMainFinish middleware
         const onMainFinishMiddleware = this.middleware.filter((f) => f.trigger === 'onMainFinish');
@@ -961,6 +980,7 @@ export class MagmaAgent {
                             // run the middleware on the text block
                             const middlewareResult = (await mdlwr.action(
                                 textBlock.text,
+                                send,
                                 this
                             )) as string;
                             // if the middleware has a return value, we should update the text block in the result message
@@ -1036,10 +1056,12 @@ export class MagmaAgent {
         message,
         trace,
         requestId,
+        send,
     }: {
         message: MagmaAssistantMessage;
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaAssistantMessage | null> {
         // get preToolExecution middleware
         const preToolExecutionMiddleware = this.middleware.filter(
@@ -1076,6 +1098,7 @@ export class MagmaAgent {
                             // run the middleware on the tool call
                             const middlewareResult = (await mdlwr.action(
                                 toolCall.tool_call,
+                                send,
                                 this
                             )) as MagmaToolCall;
                             // if the middleware has a return value, we should update the tool call in the result message
@@ -1144,10 +1167,12 @@ export class MagmaAgent {
         message,
         trace,
         requestId,
+        send,
     }: {
         message: MagmaUserMessage;
         trace: TraceEvent[];
         requestId: string;
+        send: MagmaSendFunction;
     }): Promise<MagmaUserMessage> {
         // get onToolExecution middleware
         const onToolExecutionMiddleware = this.middleware.filter(
@@ -1183,6 +1208,7 @@ export class MagmaAgent {
                         // run the middleware on the tool result
                         const middlewareResult = (await mdlwr.action(
                             toolResult.tool_result,
+                            send,
                             this
                         )) as MagmaToolResult;
                         // if the middleware has a return value, we should update the tool result in the result message
@@ -1299,7 +1325,7 @@ export class MagmaAgent {
         throw error;
     }
 
-    onStreamChunk(chunk: MagmaStreamChunk | null): Promise<void> | void {
+    onStreamChunk(chunk: MagmaStreamChunk | null, send: MagmaSendFunction): Promise<void> | void {
         chunk;
         return;
     }

@@ -104,7 +104,7 @@ export class MagmaAgent {
      * Optional method to receive input from the user
      * @param message message object received from the user - type to be defined by extending class
      */
-    public async receive?(message: any): Promise<void> {}
+    public async receive?(message: any, send: MagmaSendFunction): Promise<void> {}
 
     /**
      * Sends data to the connected client depending on the medium (ws, SSE, etc)

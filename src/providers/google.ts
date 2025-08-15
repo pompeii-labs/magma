@@ -19,6 +19,7 @@ import {
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
     MagmaMessage,
+    MagmaSendFunction,
     MagmaStreamChunk,
     MagmaTool,
     MagmaToolParam,
@@ -32,6 +33,7 @@ export class GoogleProvider extends Provider {
     static override async makeCompletionRequest({
         config,
         onStreamChunk,
+        send,
         attempt = 0,
         signal,
         agent,
@@ -39,7 +41,8 @@ export class GoogleProvider extends Provider {
         requestId,
     }: {
         config: MagmaCompletionConfig;
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
+        onStreamChunk?: (chunk: MagmaStreamChunk | null, send: MagmaSendFunction) => Promise<void>;
+        send: MagmaSendFunction;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
@@ -158,7 +161,7 @@ export class GoogleProvider extends Provider {
                         });
                     }
 
-                    onStreamChunk?.(magmaStreamChunk);
+                    onStreamChunk?.(magmaStreamChunk, send);
                 }
 
                 let magmaMessage: MagmaAssistantMessage = new MagmaAssistantMessage({
@@ -193,7 +196,7 @@ export class GoogleProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
-                onStreamChunk?.(null);
+                onStreamChunk?.(null, send);
 
                 trace.push({
                     type: 'completion',
@@ -307,6 +310,7 @@ export class GoogleProvider extends Provider {
                 return this.makeCompletionRequest({
                     config,
                     onStreamChunk,
+                    send,
                     attempt: attempt + 1,
                     signal,
                     agent,

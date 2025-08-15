@@ -6,6 +6,7 @@ import {
     MagmaCompletionConfig,
     MagmaCompletionStopReason,
     MagmaMessage,
+    MagmaSendFunction,
     MagmaStreamChunk,
     MagmaTextBlock,
     MagmaTool,
@@ -33,6 +34,7 @@ export class OpenAIProvider extends Provider {
     static override async makeCompletionRequest({
         config,
         onStreamChunk,
+        send,
         attempt = 0,
         signal,
         agent,
@@ -40,7 +42,8 @@ export class OpenAIProvider extends Provider {
         requestId,
     }: {
         config: MagmaCompletionConfig;
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void>;
+        onStreamChunk?: (chunk: MagmaStreamChunk | null, send: MagmaSendFunction) => Promise<void>;
+        send: MagmaSendFunction;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;
@@ -197,7 +200,7 @@ export class OpenAIProvider extends Provider {
                         magmaStreamChunk.buffer.blocks.push(...bufferToolCallBlocks);
                     }
 
-                    onStreamChunk?.(magmaStreamChunk);
+                    onStreamChunk?.(magmaStreamChunk, send);
                 }
 
                 let magmaMessage = new MagmaAssistantMessage({ role: 'assistant', blocks: [] });
@@ -231,7 +234,7 @@ export class OpenAIProvider extends Provider {
                     stop_reason: stopReason,
                 };
 
-                onStreamChunk?.(null);
+                onStreamChunk?.(null, send);
 
                 trace.push({
                     type: 'completion',
@@ -341,6 +344,7 @@ export class OpenAIProvider extends Provider {
                 return this.makeCompletionRequest({
                     config,
                     onStreamChunk,
+                    send,
                     attempt: attempt + 1,
                     signal,
                     agent,

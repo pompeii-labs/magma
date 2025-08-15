@@ -9,6 +9,7 @@ import {
     MagmaToolCall,
     MagmaToolReturnType,
     MagmaHook,
+    MagmaSendFunction,
 } from './types';
 import { validate } from 'node-cron';
 
@@ -26,7 +27,7 @@ export function tool(args: {
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((call: MagmaToolCall, agent: MagmaAgent) => R) & {
+            ((call: MagmaToolCall, send?: MagmaSendFunction, agent?: MagmaAgent) => R) & {
                 _toolInfo?: {
                     name?: string;
                     description?: string;
@@ -61,7 +62,7 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((call: MagmaToolCall, agent: MagmaAgent) => R) & {
+            ((call: MagmaToolCall, send?: MagmaSendFunction, agent?: MagmaAgent) => R) & {
                 _methodName?: string;
                 _parameterInfo?: (MagmaToolParam & { key: string; required?: boolean })[];
             }
@@ -97,7 +98,11 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((content?: MagmaMiddlewareParamType<T>, agent?: MagmaAgent) => R) & {
+            ((
+                content?: MagmaMiddlewareParamType<T>,
+                send?: MagmaSendFunction,
+                agent?: MagmaAgent
+            ) => R) & {
                 _middlewareTrigger?: T;
                 _critical?: boolean;
                 _order?: number;
@@ -144,7 +149,11 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
  */
 export function hook(
     hookName: string,
-    options: { session?: MagmaHook['session']; description?: string; setup?: MagmaHook['setup'] } = {}
+    options: {
+        session?: MagmaHook['session'];
+        description?: string;
+        setup?: MagmaHook['setup'];
+    } = {}
 ) {
     return function <R extends void>(
         target: object,

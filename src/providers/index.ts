@@ -5,6 +5,7 @@ import {
     MagmaCompletionStopReason,
     MagmaMessage,
     MagmaProvider,
+    MagmaSendFunction,
     MagmaStreamChunk,
     MagmaTool,
     TraceEvent,
@@ -53,6 +54,7 @@ export abstract class Provider implements ProviderProps {
     static async makeCompletionRequest({
         config,
         onStreamChunk,
+        send,
         attempt = 0,
         signal,
         agent,
@@ -60,7 +62,11 @@ export abstract class Provider implements ProviderProps {
         requestId,
     }: {
         config: MagmaCompletionConfig;
-        onStreamChunk?: (chunk: MagmaStreamChunk | null) => Promise<void> | void;
+        onStreamChunk?: (
+            chunk: MagmaStreamChunk | null,
+            send: MagmaSendFunction
+        ) => Promise<void> | void;
+        send: MagmaSendFunction;
         attempt: number;
         signal?: AbortSignal;
         agent: MagmaAgent;

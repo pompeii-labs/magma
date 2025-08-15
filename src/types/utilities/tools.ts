@@ -1,5 +1,5 @@
 import { MagmaAgent } from '../../agent';
-import { MagmaToolCall } from '../messages';
+import { MagmaSendFunction, MagmaToolCall } from '../index';
 
 export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
 
@@ -45,6 +45,7 @@ export type MagmaToolReturnType = string | Record<string, any> | void;
 // Target in-code function that a MagmaTool maps to
 export type MagmaToolTarget = (
     call: MagmaToolCall,
+    send: MagmaSendFunction,
     agent: MagmaAgent
 ) => MagmaToolReturnType | Promise<MagmaToolReturnType>;
 // Tool type containing the json schema sent to the LLM and the target to be called with the generated args

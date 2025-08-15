@@ -1,5 +1,5 @@
 import { MagmaAgent } from '../../agent';
-import { MagmaToolCall, MagmaToolResult } from '../index';
+import { MagmaSendFunction, MagmaToolCall, MagmaToolResult } from '../index';
 
 export const MagmaMiddlewareTriggers = [
     'onCompletion',
@@ -41,6 +41,7 @@ export type MagmaMiddleware = {
     trigger: MagmaMiddlewareTriggerType;
     action: (
         message: MagmaMiddlewareParamType<MagmaMiddlewareTriggerType>,
+        send: MagmaSendFunction,
         agent: MagmaAgent
     ) =>
         | Promise<MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>>

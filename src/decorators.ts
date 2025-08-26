@@ -205,3 +205,21 @@ export function job(cron: string, options: { timezone?: string } = {}) {
         descriptor.value._options = options;
     };
 }
+
+export function receive(messageType: string) {
+    return function <R extends void>(
+        target: object,
+        propertyKey: string,
+        descriptor: TypedPropertyDescriptor<
+            ((data: unknown, send: MagmaSendFunction, agent: MagmaAgent) => R) & {
+                _messageType?: string;
+            }
+        >
+    ) {
+        if (!descriptor.value) {
+            throw new Error('Receive decorator must be used on a function');
+        }
+
+        descriptor.value._messageType = messageType;
+    };
+}

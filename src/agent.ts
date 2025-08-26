@@ -23,12 +23,14 @@ import {
     MagmaToolCallBlock,
     MagmaToolCall,
     MagmaSendFunction,
+    MagmaReceive,
 } from './types';
 import { Provider } from './providers';
 import {
     loadHooks,
     loadJobs,
     loadMiddleware,
+    loadReceivers,
     loadTools,
     parseErrorToError,
     parseErrorToString,
@@ -106,11 +108,6 @@ export class MagmaAgent {
      */
     public async receive?(message: any, send: MagmaSendFunction): Promise<void> {}
 
-    /**
-     * Sends data to the connected client depending on the medium (ws, SSE, etc)
-     * @param message any data object to be sent to the client
-     */
-
     public async onWsClose(code: number, reason?: string): Promise<void> {}
 
     public async cleanup(): Promise<void> {
@@ -148,6 +145,15 @@ export class MagmaAgent {
      * @throws Will rethrow the error if no `onError` handler is defined
      */
     public async main(args: {
+        config?: MagmaProviderConfig;
+        send: MagmaSendFunction;
+        userMessage: MagmaUserMessage;
+        onTrace?: (trace: TraceEvent[]) => void;
+    }) {
+        return await this._main(args);
+    }
+
+    private async _main(args: {
         config?: MagmaProviderConfig;
         send: MagmaSendFunction;
         userMessage: MagmaUserMessage;
@@ -290,7 +296,7 @@ export class MagmaAgent {
 
                             // Trigger another completion with the error message as context
                             return resolve(
-                                await this.main({
+                                await this._main({
                                     config,
                                     send,
                                     messages: localMessages,
@@ -335,7 +341,7 @@ export class MagmaAgent {
                                 );
 
                                 return resolve(
-                                    await this.main({
+                                    await this._main({
                                         config,
                                         send,
                                         messages: localMessages,
@@ -376,7 +382,7 @@ export class MagmaAgent {
 
                             // Trigger another completion with the tool result because last message was a tool call
                             return resolve(
-                                await this.main({
+                                await this._main({
                                     config,
                                     send,
                                     messages: localMessages,
@@ -410,7 +416,7 @@ export class MagmaAgent {
                             );
 
                             return resolve(
-                                await this.main({
+                                await this._main({
                                     config,
                                     send,
                                     messages: localMessages,
@@ -1283,6 +1289,10 @@ export class MagmaAgent {
         return [];
     }
 
+    public getReceivers(): MagmaReceive[] {
+        return [];
+    }
+
     public get tools(): MagmaTool[] {
         const agentTools = loadTools(this);
         const loadedTools = this.getTools();
@@ -1312,6 +1322,13 @@ export class MagmaAgent {
         const loadedJobs = this.getJobs();
         const utilityJobs = this.utilities.flatMap((u) => u.jobs.filter(Boolean));
         return agentJobs.concat(loadedJobs).concat(utilityJobs);
+    }
+
+    public get receivers(): MagmaReceive[] {
+        const agentReceivers = loadReceivers(this);
+        const loadedReceivers = this.getReceivers();
+        const utilityReceivers = this.utilities.flatMap((u) => u.receivers.filter(Boolean));
+        return agentReceivers.concat(loadedReceivers).concat(utilityReceivers);
     }
 
     /* EVENT HANDLERS */

@@ -102,12 +102,6 @@ export class MagmaAgent {
 
     public async setup?(opts?: object): Promise<void> {}
 
-    /**
-     * Optional method to receive input from the user
-     * @param message message object received from the user - type to be defined by extending class
-     */
-    public async receive?(message: any, send: MagmaSendFunction): Promise<void> {}
-
     public async onWsClose(code: number, reason?: string): Promise<void> {}
 
     public async cleanup(): Promise<void> {

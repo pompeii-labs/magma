@@ -13,9 +13,9 @@ import {
     MagmaUsage,
     MagmaUserMessage,
     MagmaAssistantMessage,
-    MagmaMessage,
     MagmaSystemMessage,
     MagmaToolResultMessage,
+    MagmaMessage,
 } from './types';
 import {
     loadHooks,
@@ -29,7 +29,6 @@ import {
 import cron from 'node-cron';
 import {
     createOpenRouter,
-    OpenRouterCompletionSettings,
     OpenRouterProvider,
     OpenRouterProviderOptions,
 } from '@openrouter/ai-sdk-provider';
@@ -76,7 +75,7 @@ export class MagmaAgent {
         },
         general: {},
     };
-    private messages: Array<ModelMessage>;
+    public messages: Array<MagmaMessage>;
     private middlewareRetries: Record<string, number>;
     private messageContext: number;
     private scheduledJobs: cron.ScheduledTask[];
@@ -562,51 +561,6 @@ export class MagmaAgent {
         } finally {
             this.abortControllers.delete(requestId);
         }
-    }
-
-    /**
-     * Store a message in the agent context
-     *
-     * @param content content of the message to store
-     * @param role message role (default: user)
-     */
-    public addMessage(message: MagmaMessage): void {
-        this.messages.push(message);
-    }
-
-    /**
-     * Set the messages for the agent
-     * @param messages messages to set
-     */
-    public setMessages(messages: MagmaMessage[]): void {
-        this.messages = messages;
-    }
-
-    /**
-     * Remove a message from the agent context
-     * If no filter is provided, the last message is removed
-     *
-     * @param filter optional, remove messages that match the filter
-     */
-    public removeMessage(filter?: (message: MagmaMessage) => boolean): void {
-        if (filter) {
-            this.messages = this.messages.filter((message) => !filter(message));
-        } else {
-            this.messages.pop();
-        }
-    }
-
-    /**
-     * Get the last N messages from the agent context
-     * @param slice number of messages to return (default: 20)
-     * @returns array of messages
-     */
-    public getMessages(slice: number = 20) {
-        if (slice === -1) return this.messages;
-
-        let messages = this.messages.slice(-slice);
-
-        return messages;
     }
 
     /**

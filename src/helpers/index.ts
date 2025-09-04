@@ -1,4 +1,4 @@
-import { MagmaAssistantMessage, MagmaToolParam } from '../types';
+import { MagmaAssistantMessage, MagmaMessage, MagmaToolParam } from '../types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -95,7 +95,7 @@ export function parseErrorToError(error: unknown): Error {
     }
 }
 
-export function getMessageText(message: MagmaAssistantMessage): string {
+export function getMessageText(message: MagmaMessage): string {
     if (typeof message.content === 'string') {
         return message.content;
     } else {

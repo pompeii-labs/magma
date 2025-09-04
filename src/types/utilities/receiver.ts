@@ -1,14 +1,9 @@
 import { MagmaAgent } from '../../agent';
 import { MagmaSendFunction } from '../agent';
 
-export type MagmaWSMessage = {
-    type: string;
-    data: unknown;
-};
-
 export type MagmaReceiver = {
     handler: (
-        wsMessage: MagmaWSMessage,
+        wsMessage: string,
         send: MagmaSendFunction,
         agent: MagmaAgent
     ) => Promise<void> | void;

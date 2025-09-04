@@ -17,7 +17,7 @@ import { validate } from 'node-cron';
  * Decorator to define a tool (optional)
  * @param args name and description for tool
  */
-export function tool(args: {
+export function tool(args?: {
     name?: string;
     description?: string;
     cache?: boolean;
@@ -42,10 +42,10 @@ export function tool(args: {
         }
 
         descriptor.value._toolInfo = {
-            name: args.name ?? propertyKey,
-            description: args.description,
-            cache: args.cache,
-            enabled: args.enabled,
+            name: args?.name ?? propertyKey,
+            description: args?.description,
+            cache: args?.cache,
+            enabled: args?.enabled,
         };
     };
 }
@@ -206,20 +206,20 @@ export function job(cron: string, options: { timezone?: string } = {}) {
     };
 }
 
-export function receive(messageType: string) {
+export function receiver(condition: (data: string) => boolean) {
     return function <R extends void>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((data: unknown, send: MagmaSendFunction, agent: MagmaAgent) => R) & {
-                _messageType?: string;
+            ((data: string, send: MagmaSendFunction, agent: MagmaAgent) => R) & {
+                _shouldHandle?: (data: string) => boolean;
             }
         >
     ) {
         if (!descriptor.value) {
-            throw new Error('Receive decorator must be used on a function');
+            throw new Error('Receiver decorator must be used on a function');
         }
 
-        descriptor.value._messageType = messageType;
+        descriptor.value._shouldHandle = condition;
     };
 }

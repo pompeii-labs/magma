@@ -1,3 +1,4 @@
+import { ToolResultPart } from 'ai';
 import { MagmaAgent } from '../../agent';
 import { MagmaSendFunction, MagmaToolCall } from '../index';
 
@@ -40,7 +41,7 @@ export type MagmaToolParam =
     | MagmaToolNumberParam
     | MagmaToolBooleanParam;
 
-export type MagmaToolReturnType = string | Record<string, any> | void;
+export type MagmaToolReturnType = ToolResultPart['output'] | string | Record<string, any> | void;
 
 // Target in-code function that a MagmaTool maps to
 export type MagmaToolTarget = (
@@ -52,7 +53,7 @@ export type MagmaToolTarget = (
 export type MagmaTool = {
     name: string;
     description: string;
-    params: (MagmaToolParam & { key: string; required?: boolean })[];
+    params: MagmaToolObjectParam['properties'];
     target: MagmaToolTarget;
     enabled: (agent: MagmaAgent) => boolean;
     cache?: boolean;

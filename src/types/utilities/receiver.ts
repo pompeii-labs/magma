@@ -6,11 +6,11 @@ export type MagmaWSMessage = {
     data: unknown;
 };
 
-export type MagmaReceive = {
+export type MagmaReceiver = {
     handler: (
         wsMessage: MagmaWSMessage,
         send: MagmaSendFunction,
         agent: MagmaAgent
     ) => Promise<void> | void;
-    messageType: string;
+    shouldHandle: (data: string) => boolean;
 };

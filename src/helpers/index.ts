@@ -1,4 +1,4 @@
-import { MagmaMessage, MagmaToolParam } from '../types';
+import { MagmaAssistantMessage, MagmaToolParam } from '../types';
 
 /**
  * Helper function to recursively convert a MagmaToolParam to JSON object schema
@@ -81,51 +81,6 @@ export async function sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Helper function to sanitize messages by removing tool calls and tool results that are not preceded by a tool call or tool result. This function operates on the messages array in place.
- * @param messages MagmaMessage[] to sanitize
- */
-export function sanitizeMessages(messages: MagmaMessage[]): void {
-    for (let i = 0; i < messages.length; i++) {
-        // if the message is a tool call
-        if (messages[i].role === 'assistant' && messages[i].getToolCalls().length > 0) {
-            // if the message is at the end of the array, we need to remove it
-            if (i === messages.length - 1) {
-                messages.pop();
-            } else {
-                // if the message is not at the end of the array, make sure the next message is a tool result
-                if (
-                    messages[i + 1].role === 'user' &&
-                    messages[i + 1].getToolResults().length > 0
-                ) {
-                    continue;
-                } else {
-                    messages.splice(i, 1);
-                    i--;
-                }
-            }
-            // if the message is a tool result
-        } else if (messages[i].role === 'user' && messages[i].getToolResults().length > 0) {
-            // if the message is at the beginning of the array, we need to remove it
-            if (i === 0) {
-                messages.shift();
-                i--;
-            } else {
-                // if the message is not at the beginning of the array, make sure the previous message is a tool call
-                if (
-                    messages[i - 1].role === 'assistant' &&
-                    messages[i - 1].getToolCalls().length > 0
-                ) {
-                    continue;
-                } else {
-                    messages.splice(i, 1);
-                    i--;
-                }
-            }
-        }
-    }
-}
-
 export function parseErrorToString(error: unknown): string {
     return parseErrorToError(error).message;
 }
@@ -137,6 +92,28 @@ export function parseErrorToError(error: unknown): Error {
         return new Error(error);
     } else {
         return new Error(JSON.stringify(error));
+    }
+}
+
+export function getMessageText(message: MagmaAssistantMessage): string {
+    if (typeof message.content === 'string') {
+        return message.content;
+    } else {
+        return message.content
+            .filter((p) => p.type === 'text')
+            .map((p) => p.text)
+            .join('\n');
+    }
+}
+
+export function getMessageReasoning(message: MagmaAssistantMessage): string {
+    if (typeof message.content === 'string') {
+        return '';
+    } else {
+        return message.content
+            .filter((p) => p.type === 'reasoning')
+            .map((p) => p.text)
+            .join('\n');
     }
 }
 

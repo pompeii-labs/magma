@@ -2,7 +2,7 @@ import {
     MagmaHook,
     MagmaJob,
     MagmaMiddleware,
-    MagmaReceive,
+    MagmaReceiver,
     MagmaTool,
     MagmaToolParam,
     MagmaUtilities,
@@ -165,8 +165,8 @@ export function loadMiddleware(target: any): MagmaMiddleware[] {
  * @param target class or instance of a class to load middleware from
  * @returns array of MagmaMiddleware objects
  */
-export function loadReceivers(target: any): MagmaReceive[] {
-    const receivers: MagmaReceive[] = [];
+export function loadReceivers(target: any): MagmaReceiver[] {
+    const receivers: MagmaReceiver[] = [];
 
     const { staticMethods, instanceMethods } = getMethodsFromClassOrInstance(target);
     const methods = [...staticMethods, ...instanceMethods];
@@ -175,7 +175,7 @@ export function loadReceivers(target: any): MagmaReceive[] {
         if (typeof method === 'function' && '_messageType' in method) {
             receivers.push({
                 handler: method.bind(target),
-                messageType: (method as any)['_messageType'],
+                shouldHandle: (method as any)['_messageType'].bind(target),
             });
         }
     }

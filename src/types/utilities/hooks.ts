@@ -1,9 +1,13 @@
 import { Request, Response } from 'express';
-import { MagmaAgent } from '../../agent';
+import { DecoratedExtras } from '.';
 
 export type MagmaHook = {
     name: string;
-    handler: (request: Request, response: Response, agent: MagmaAgent) => Promise<void>;
+    handler: (
+        request: Request,
+        response: Response,
+        extras: Pick<DecoratedExtras, 'agent'>
+    ) => Promise<void>;
     session?: 'default' | (string & {}) | ((req: Request) => string | Promise<string>);
     setup?:
         | ((req: Request) => Record<string, any> | Promise<Record<string, any>>)

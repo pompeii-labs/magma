@@ -16,6 +16,7 @@ import {
     MagmaSystemMessage,
     MagmaToolResultMessage,
     MagmaMessage,
+    DecoratedExtras,
 } from './types';
 import {
     loadHooks,
@@ -59,13 +60,11 @@ type AgentProps = {
     general?: CallSettings;
     verbose?: boolean;
     messageContext?: number;
-    stream?: boolean;
     sessionId?: string;
 };
 
 export class MagmaAgent {
     verbose?: boolean;
-    stream: boolean = false;
     public sessionId: string;
 
     private provider: OpenRouterProvider = createOpenRouter();
@@ -84,7 +83,6 @@ export class MagmaAgent {
     constructor(args?: AgentProps) {
         this.messageContext = args?.messageContext ?? 20;
         this.verbose = args?.verbose ?? false;
-        this.stream = args?.stream ?? false;
         this.sessionId = args?.sessionId ?? '';
 
         args ??= {
@@ -146,6 +144,8 @@ export class MagmaAgent {
         userMessage: MagmaUserMessage;
         onTrace?: (trace: TraceEvent[]) => void;
         trigger?: false;
+        ctx?: Record<string, any>;
+        onStreamChunk?: (chunk: MagmaStreamChunk, extras: DecoratedExtras) => void;
     }): Promise<MagmaAssistantMessage | null>;
 
     public async main(args: {
@@ -157,6 +157,8 @@ export class MagmaAgent {
         userMessage: MagmaUserMessage;
         onTrace?: (trace: TraceEvent[]) => void;
         trigger: true;
+        ctx?: Record<string, any>;
+        onStreamChunk?: (chunk: MagmaStreamChunk, extras: DecoratedExtras) => void;
     }): Promise<MagmaToolResultMessage | null>;
 
     public async main(args: {
@@ -168,6 +170,8 @@ export class MagmaAgent {
         userMessage: MagmaUserMessage;
         onTrace?: (trace: TraceEvent[]) => void;
         trigger?: boolean;
+        ctx?: Record<string, any>;
+        onStreamChunk?: (chunk: MagmaStreamChunk, extras: DecoratedExtras) => void;
     }): Promise<MagmaAssistantMessage | MagmaToolResultMessage | null> {
         return (await this._main({
             config: args.config,
@@ -175,6 +179,7 @@ export class MagmaAgent {
             userOrToolMessage: args.userMessage,
             onTrace: args.onTrace,
             trigger: args.trigger,
+            ctx: args.ctx,
         })) as MagmaToolResultMessage | null;
     }
 
@@ -190,6 +195,8 @@ export class MagmaAgent {
         messages?: Array<ModelMessage>;
         trace?: TraceEvent[];
         onTrace?: (trace: TraceEvent[]) => void;
+        ctx?: Record<string, any>;
+        onStreamChunk?: (chunk: MagmaStreamChunk, extras: DecoratedExtras) => void;
     }): Promise<AssistantModelMessage | MagmaToolResultMessage | null> {
         const {
             config,
@@ -198,6 +205,8 @@ export class MagmaAgent {
             send = () => {},
             userOrToolMessage,
             trigger = false,
+            ctx = {},
+            onStreamChunk = () => {},
         } = args;
         let originIndex = args.originIndex;
         const localMessages = [
@@ -234,6 +243,7 @@ export class MagmaAgent {
                                         trace,
                                         requestId,
                                         send,
+                                        ctx,
                                     });
                             } catch (error) {
                                 // If the preCompletion middleware fails, we should remove the last message
@@ -309,7 +319,7 @@ export class MagmaAgent {
                                     .filter((t) => t.enabled(this))
                                     .map((t) => [t.name, convertMagmaToolToAISDKTool(t)])
                             ),
-                            messages: [...this.getSystemPrompts(), ...completionMessages],
+                            messages: [...this.getSystemPrompts(ctx), ...completionMessages],
                             abortSignal: this.abortControllers.get(requestId)?.signal,
                             ...configToUse.general,
                         });
@@ -320,9 +330,7 @@ export class MagmaAgent {
                         }
 
                         for await (const chunk of fullStream) {
-                            if (this.stream) {
-                                this.onStreamChunk(chunk, send);
-                            }
+                            onStreamChunk(chunk, { agent: this, send, ctx });
                         }
 
                         // create the Asisstant message from the completion
@@ -349,6 +357,7 @@ export class MagmaAgent {
                                 trace,
                                 requestId,
                                 send,
+                                ctx,
                             });
                         } catch (error) {
                             // If the onCompletion middleware fails, we should remove the last message
@@ -407,6 +416,7 @@ export class MagmaAgent {
                                         trace,
                                         requestId,
                                         send,
+                                        ctx,
                                     });
                             } catch (error) {
                                 // Remove the failing tool call message
@@ -450,6 +460,7 @@ export class MagmaAgent {
                                 trace,
                                 requestId,
                                 send,
+                                ctx,
                             });
 
                             onToolExecutionMiddlewareResult =
@@ -458,6 +469,7 @@ export class MagmaAgent {
                                     trace,
                                     requestId,
                                     send,
+                                    ctx,
                                 });
 
                             // If the abort controller is not active, return null
@@ -493,6 +505,7 @@ export class MagmaAgent {
                                 trace,
                                 requestId,
                                 send,
+                                ctx,
                             });
                         } catch (error) {
                             // If the onMainFinish middleware fails, we should remove the offending message
@@ -614,12 +627,14 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: AssistantModelMessage;
         allowList?: string[];
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<ToolModelMessage> {
         try {
             let toolResultMessage: ToolModelMessage = {
@@ -655,7 +670,7 @@ export class MagmaAgent {
                         },
                     });
 
-                    let result = await tool.target(toolCall, send, this);
+                    let result = await tool.target(toolCall, { agent: this, send, ctx });
 
                     if (!result) {
                         this.log(`No result returned for ${toolCall.toolName}()`);
@@ -747,11 +762,13 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: UserModelMessage;
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<UserModelMessage> {
         // get preCompletion middleware
         const preCompletionMiddleware = this.middleware.filter(
@@ -788,11 +805,11 @@ export class MagmaAgent {
                                 },
                             });
                             // run the middleware on the text block
-                            const middlewareResult = (await mdlwr.action(
-                                textBlock.text,
+                            const middlewareResult = (await mdlwr.action(textBlock.text, {
+                                agent: this,
                                 send,
-                                this
-                            )) as string;
+                                ctx,
+                            })) as string;
                             // if the middleware has a return value, we should update the text block in the result message
                             if (middlewareResult !== undefined) {
                                 this.log(
@@ -854,11 +871,13 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: AssistantModelMessage;
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<AssistantModelMessage | null> {
         // get onCompletion middleware
         const onCompletionMiddleware = this.middleware.filter((f) => f.trigger === 'onCompletion');
@@ -895,11 +914,11 @@ export class MagmaAgent {
                                 },
                             });
                             // run the middleware on the text block
-                            const middlewareResult = (await mdlwr.action(
-                                textBlock.text,
+                            const middlewareResult = (await mdlwr.action(textBlock.text, {
+                                agent: this,
                                 send,
-                                this
-                            )) as string;
+                                ctx,
+                            })) as string;
                             // if the middleware has a return value, we should update the text block in the result message
                             if (middlewareResult !== undefined) {
                                 this.log(
@@ -979,11 +998,13 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: AssistantModelMessage;
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<AssistantModelMessage | null> {
         // get onMainFinish middleware
         const onMainFinishMiddleware = this.middleware.filter((f) => f.trigger === 'onMainFinish');
@@ -1020,11 +1041,11 @@ export class MagmaAgent {
                                 },
                             });
                             // run the middleware on the text block
-                            const middlewareResult = (await mdlwr.action(
-                                textBlock.text,
+                            const middlewareResult = (await mdlwr.action(textBlock.text, {
+                                agent: this,
                                 send,
-                                this
-                            )) as string;
+                                ctx,
+                            })) as string;
                             // if the middleware has a return value, we should update the text block in the result message
                             if (middlewareResult !== undefined) {
                                 this.log(
@@ -1104,11 +1125,13 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: AssistantModelMessage;
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<AssistantModelMessage | null> {
         // get preToolExecution middleware
         const preToolExecutionMiddleware = this.middleware.filter(
@@ -1145,11 +1168,11 @@ export class MagmaAgent {
                                 },
                             });
                             // run the middleware on the tool call
-                            const middlewareResult = (await mdlwr.action(
-                                toolCall,
+                            const middlewareResult = (await mdlwr.action(toolCall, {
+                                agent: this,
                                 send,
-                                this
-                            )) as MagmaToolCall;
+                                ctx,
+                            })) as MagmaToolCall;
                             // if the middleware has a return value, we should update the tool call in the result message
                             if (middlewareResult !== undefined) {
                                 this.log(
@@ -1229,11 +1252,13 @@ export class MagmaAgent {
         trace,
         requestId,
         send,
+        ctx,
     }: {
         message: ToolModelMessage;
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
+        ctx: Record<string, any>;
     }): Promise<ToolModelMessage> {
         // get onToolExecution middleware
         const onToolExecutionMiddleware = this.middleware.filter(
@@ -1266,11 +1291,11 @@ export class MagmaAgent {
                             },
                         });
                         // run the middleware on the tool result
-                        const middlewareResult = (await mdlwr.action(
-                            toolResult,
+                        const middlewareResult = (await mdlwr.action(toolResult, {
+                            agent: this,
                             send,
-                            this
-                        )) as MagmaToolResult;
+                            ctx,
+                        })) as MagmaToolResult;
                         // if the middleware has a return value, we should update the tool result in the result message
                         if (middlewareResult !== undefined) {
                             resultContent[i] = middlewareResult;
@@ -1400,18 +1425,13 @@ export class MagmaAgent {
 
     /* EVENT HANDLERS */
 
-    getSystemPrompts(): MagmaSystemMessage[] {
+    getSystemPrompts(ctx: Record<string, any>): MagmaSystemMessage[] {
         return [];
     }
 
     onError(error: Error): Promise<void> | void {
         this.log(`Error: ${error.message}`);
         throw error;
-    }
-
-    onStreamChunk(chunk: MagmaStreamChunk, send: MagmaSendFunction): Promise<void> | void {
-        chunk;
-        return;
     }
 
     onUsageUpdate(usage: MagmaUsage): Promise<void> | void {

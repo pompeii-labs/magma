@@ -9,7 +9,7 @@ import {
     MagmaToolCall,
     MagmaToolReturnType,
     MagmaHook,
-    MagmaSendFunction,
+    DecoratedExtras,
 } from './types';
 import { validate } from 'node-cron';
 
@@ -27,7 +27,7 @@ export function tool(args?: {
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((call: MagmaToolCall, send?: MagmaSendFunction, agent?: MagmaAgent) => R) & {
+            ((call: MagmaToolCall, args: DecoratedExtras) => R) & {
                 _toolInfo?: {
                     name?: string;
                     description?: string;
@@ -62,7 +62,7 @@ export function toolparam(args: MagmaToolParam & { key: string; required?: boole
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((call: MagmaToolCall, send?: MagmaSendFunction, agent?: MagmaAgent) => R) & {
+            ((call: MagmaToolCall, args: DecoratedExtras) => R) & {
                 _methodName?: string;
                 _parameterInfo?: (MagmaToolParam & { key: string; required?: boolean })[];
             }
@@ -98,11 +98,7 @@ export function middleware<T extends MagmaMiddlewareTriggerType>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((
-                content?: MagmaMiddlewareParamType<T>,
-                send?: MagmaSendFunction,
-                agent?: MagmaAgent
-            ) => R) & {
+            ((content: MagmaMiddlewareParamType<T>, args: DecoratedExtras) => R) & {
                 _middlewareTrigger?: T;
                 _critical?: boolean;
                 _order?: number;
@@ -155,11 +151,11 @@ export function hook(
         setup?: MagmaHook['setup'];
     } = {}
 ) {
-    return function <R extends void>(
+    return function <R extends void | Promise<void>>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((req: Request, res: Response, agent?: MagmaAgent) => R) & {
+            ((req: Request, res: Response, args: Pick<DecoratedExtras, 'agent'>) => R) & {
                 _hookName?: string;
                 _session?: MagmaHook['session'];
                 _description?: string;
@@ -190,11 +186,11 @@ export function job(cron: string, options: { timezone?: string } = {}) {
         throw new Error(`Invalid cron expression - ${cron}`);
     }
 
-    return function <R extends void>(
+    return function <R extends void | Promise<void>>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((agent?: MagmaAgent) => R) & { _schedule?: string; _options?: { timezone?: string } }
+            ((agent: MagmaAgent) => R) & { _schedule?: string; _options?: { timezone?: string } }
         >
     ) {
         if (!descriptor.value) {
@@ -207,11 +203,11 @@ export function job(cron: string, options: { timezone?: string } = {}) {
 }
 
 export function receiver(condition: (data: string) => boolean) {
-    return function <R extends void>(
+    return function <R extends void | Promise<void>>(
         target: object,
         propertyKey: string,
         descriptor: TypedPropertyDescriptor<
-            ((data: string, send: MagmaSendFunction, agent: MagmaAgent) => R) & {
+            ((data: string, args: Omit<DecoratedExtras, 'ctx'>) => R) & {
                 _shouldHandle?: (data: string) => boolean;
             }
         >

@@ -21,7 +21,7 @@ export function tool(args?: {
     name?: string;
     description?: string;
     cache?: boolean;
-    enabled?: (agent: MagmaAgent) => boolean;
+    enabled?: (agent: MagmaAgent, ctx: Record<string, any>) => boolean;
 }) {
     return function <R extends MagmaToolReturnType | Promise<MagmaToolReturnType>>(
         target: object,
@@ -32,7 +32,7 @@ export function tool(args?: {
                     name?: string;
                     description?: string;
                     cache?: boolean;
-                    enabled?: (agent: MagmaAgent) => boolean;
+                    enabled?: (agent: MagmaAgent, ctx: Record<string, any>) => boolean;
                 };
             }
         >

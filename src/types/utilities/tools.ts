@@ -54,6 +54,6 @@ export type MagmaTool = {
     description: string;
     params: MagmaToolObjectParam['properties'];
     target: MagmaToolTarget;
-    enabled: (agent: MagmaAgent) => boolean;
+    enabled: (agent: MagmaAgent, ctx: Record<string, any>) => boolean;
     cache?: boolean;
 };

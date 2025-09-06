@@ -316,7 +316,7 @@ export class MagmaAgent {
                             }),
                             tools: Object.fromEntries(
                                 this.tools
-                                    .filter((t) => t.enabled(this))
+                                    .filter((t) => t.enabled(this, ctx))
                                     .map((t) => [t.name, convertMagmaToolToAISDKTool(t)])
                             ),
                             messages: [...this.getSystemPrompts(ctx), ...completionMessages],
@@ -623,14 +623,12 @@ export class MagmaAgent {
      */
     private async executeTools({
         message,
-        allowList = [],
         trace,
         requestId,
         send,
         ctx,
     }: {
         message: AssistantModelMessage;
-        allowList?: string[];
         trace: TraceEvent[];
         requestId: string;
         send: MagmaSendFunction;
@@ -653,7 +651,7 @@ export class MagmaAgent {
 
                 try {
                     const tool = this.tools
-                        .filter((t) => t.enabled(this) || allowList.includes(t.name))
+                        .filter((t) => t.enabled(this, ctx))
                         .find((t) => t.name === toolCall.toolName);
                     if (!tool)
                         throw new Error(`No tool found to handle call for ${toolCall.toolName}()`);

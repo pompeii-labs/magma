@@ -1,6 +1,9 @@
-import { DecoratedExtras } from '.';
+import { DecoratedExtras } from ".";
 
-export type MagmaReceiver = {
-    handler: (wsMessage: string, extras: Omit<DecoratedExtras, 'ctx'>) => Promise<void> | void;
-    shouldHandle: (data: string) => boolean;
+export type MagmaReceiver<STATE> = {
+	handler: (
+		wsMessage: string,
+		extras: Omit<DecoratedExtras<STATE>, "ctx">
+	) => Promise<void> | void;
+	shouldHandle: (data: string) => boolean;
 };

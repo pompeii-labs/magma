@@ -1,21 +1,21 @@
 import {
-    AssistantModelMessage,
-    ModelMessage,
-    SystemModelMessage,
-    TextStreamPart,
-    Tool,
-    ToolCallPart,
-    ToolModelMessage,
-    ToolResultPart,
-    UserModelMessage,
-} from 'ai';
+	AssistantModelMessage,
+	ModelMessage,
+	SystemModelMessage,
+	TextStreamPart,
+	Tool,
+	ToolCallPart,
+	ToolModelMessage,
+	ToolResultPart,
+	UserModelMessage
+} from "ai";
 
 export type MagmaToolCall = ToolCallPart;
 
 export type MagmaToolResult = ToolResultPart;
 
 export type MagmaStreamChunk = TextStreamPart<{
-    [k: string]: Tool<unknown, never>;
+	[k: string]: Tool<unknown, never>;
 }>;
 
 export type MagmaMessage = ModelMessage;

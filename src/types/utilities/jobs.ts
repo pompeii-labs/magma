@@ -1,8 +1,8 @@
-import { MagmaAgent } from '../../agent';
+import { MagmaAgent } from "../../agent";
 
-export interface MagmaJob {
-    handler: (agent: MagmaAgent) => Promise<void> | void;
-    schedule: string;
-    options?: { timezone?: string };
-    name?: string;
+export interface MagmaJob<STATE> {
+	handler: (agent: MagmaAgent<STATE, {}>) => Promise<void> | void;
+	schedule: string;
+	options?: { timezone?: string };
+	name?: string;
 }

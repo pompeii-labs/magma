@@ -1,59 +1,30 @@
-import { ToolResultPart } from 'ai';
-import { MagmaAgent } from '../../agent';
-import { DecoratedExtras, MagmaSendFunction, MagmaToolCall } from '../index';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type MagmaToolParamType = 'string' | 'number' | 'object' | 'boolean' | 'array';
+import { Tool, ToolExecutionOptions } from "ai";
 
-export type MagmaToolObjectParam = {
-    type: 'object';
-    description?: string;
-    properties: (MagmaToolParam & { key: string; required?: boolean })[];
+export type MagmaToolCallOptions<STATE> = ToolExecutionOptions & { state: STATE };
+type MagmaToolExecuteFunction<STATE, INPUT, OUTPUT> = (
+	input: INPUT,
+	options: MagmaToolCallOptions<STATE>
+) => AsyncIterable<OUTPUT> | PromiseLike<OUTPUT> | OUTPUT;
+export type MagmaTool<STATE, INPUT, OUTPUT = any> = Omit<Tool<INPUT, OUTPUT>, "execute"> & {
+	execute: MagmaToolExecuteFunction<STATE, INPUT, OUTPUT>;
+	enabled?: (state: STATE) => boolean;
 };
 
-export type MagmaToolArrayParam = {
-    type: 'array';
-    description?: string;
-    items: MagmaToolParam;
-    limit?: number;
-};
+export type MagmaToolSet<STATE> = Record<
+	string,
+	| Tool<any, any>
+	| ((
+			| MagmaTool<STATE, never, never>
+			| MagmaTool<STATE, any, any>
+			| MagmaTool<STATE, any, never>
+			| MagmaTool<STATE, never, any>
+	  ) &
+			Pick<MagmaTool<STATE, any, any>, "execute">)
+>;
 
-export type MagmaToolStringParam = {
-    type: 'string';
-    description?: string;
-    enum?: string[];
-};
+export const magmaTool = <STATE, INPUT>(tool: MagmaTool<STATE, INPUT>) =>
+	tool as MagmaTool<STATE, INPUT>;
 
-export type MagmaToolNumberParam = {
-    type: 'number';
-    description?: string;
-    enum?: number[];
-};
-
-export type MagmaToolBooleanParam = {
-    type: 'boolean';
-    description?: string;
-};
-
-export type MagmaToolParam =
-    | MagmaToolObjectParam
-    | MagmaToolArrayParam
-    | MagmaToolStringParam
-    | MagmaToolNumberParam
-    | MagmaToolBooleanParam;
-
-export type MagmaToolReturnType = ToolResultPart['output'] | string | Record<string, any> | void;
-
-// Target in-code function that a MagmaTool maps to
-export type MagmaToolTarget = (
-    call: MagmaToolCall,
-    extras: DecoratedExtras
-) => MagmaToolReturnType | Promise<MagmaToolReturnType>;
-// Tool type containing the json schema sent to the LLM and the target to be called with the generated args
-export type MagmaTool = {
-    name: string;
-    description: string;
-    params: MagmaToolObjectParam['properties'];
-    target: MagmaToolTarget;
-    enabled: (agent: MagmaAgent, ctx: Record<string, any>) => boolean;
-    cache?: boolean;
-};
+export const magmaToolSet = <STATE>(toolSet: MagmaToolSet<STATE>) => toolSet as MagmaToolSet<STATE>;

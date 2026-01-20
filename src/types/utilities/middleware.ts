@@ -1,52 +1,69 @@
-import { MagmaAgent } from '../../agent';
-import { DecoratedExtras, MagmaSendFunction, MagmaToolCall, MagmaToolResult } from '../index';
+import { MagmaToolCall, MagmaToolResult, MagmaToolSet } from "../index";
 
 export const MagmaMiddlewareTriggers = [
-    'onCompletion',
-    'preCompletion',
-    'onToolExecution',
-    'preToolExecution',
-    'onMainFinish',
+	"onCompletion",
+	"preCompletion",
+	"onToolExecution",
+	"preToolExecution",
+	"onMainFinish"
 ] as const;
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
 
-export type MagmaMiddlewareReturnType<T extends MagmaMiddlewareTriggerType> =
-    T extends 'preCompletion'
-        ? string | void
-        : T extends 'onCompletion'
-          ? string | void
-          : T extends 'preToolExecution'
-            ? MagmaToolCall | void
-            : T extends 'onToolExecution'
-              ? MagmaToolResult | void
-              : T extends 'onMainFinish'
-                ? string | void
-                : never;
+export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType> =
+	TRIGGER extends "preCompletion"
+		? string | void
+		: TRIGGER extends "onCompletion"
+			? string | void
+			: TRIGGER extends "preToolExecution"
+				? MagmaToolCall | void
+				: TRIGGER extends "onToolExecution"
+					? MagmaToolResult | void
+					: TRIGGER extends "onMainFinish"
+						? string | void
+						: never;
 
-export type MagmaMiddlewareParamType<T extends MagmaMiddlewareTriggerType> =
-    T extends 'preToolExecution'
-        ? MagmaToolCall
-        : T extends 'onToolExecution'
-          ? MagmaToolResult
-          : T extends 'preCompletion'
-            ? string
-            : T extends 'onCompletion'
-              ? string
-              : T extends 'onMainFinish'
-                ? string
-                : never;
+export type MagmaMiddlewareParamType<TRIGGER extends MagmaMiddlewareTriggerType> =
+	TRIGGER extends "preToolExecution"
+		? MagmaToolCall
+		: TRIGGER extends "onToolExecution"
+			? MagmaToolResult
+			: TRIGGER extends "preCompletion"
+				? string
+				: TRIGGER extends "onCompletion"
+					? string
+					: TRIGGER extends "onMainFinish"
+						? string
+						: never;
 
-export type MagmaMiddleware = {
-    trigger: MagmaMiddlewareTriggerType;
-    action: (
-        message: MagmaMiddlewareParamType<MagmaMiddlewareTriggerType>,
-        extras: DecoratedExtras
-    ) =>
-        | Promise<MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>>
-        | MagmaMiddlewareReturnType<MagmaMiddlewareTriggerType>;
-    name: string;
-    critical?: boolean;
-    order?: number;
-    id: string;
+export type MagmaMiddleware<
+	STATE,
+	TOOLS extends MagmaToolSet<STATE>,
+	TRIGGER extends MagmaMiddlewareTriggerType = MagmaMiddlewareTriggerType
+> = {
+	trigger: TRIGGER;
+	action: (
+		message: MagmaMiddlewareParamType<TRIGGER>,
+		options: { state: STATE }
+	) => Promise<MagmaMiddlewareReturnType<TRIGGER>> | MagmaMiddlewareReturnType<TRIGGER>;
+	appliesTo?: TRIGGER extends "preToolExecution"
+		? (keyof TOOLS)[]
+		: TRIGGER extends "onToolExecution"
+			? (keyof TOOLS)[]
+			: never;
+	critical?: boolean;
+	order?: number;
 };
+
+export type MagmaMiddlewareSet<STATE, TOOLS extends MagmaToolSet<STATE>> = Record<
+	string,
+	MagmaMiddleware<STATE, TOOLS>
+>;
+
+export const magmaMiddleware = <
+	STATE,
+	TOOLS extends MagmaToolSet<STATE>,
+	TRIGGER extends MagmaMiddlewareTriggerType
+>(
+	tool: MagmaMiddleware<STATE, TOOLS, TRIGGER>
+) => tool as MagmaMiddleware<STATE, TOOLS, TRIGGER>;

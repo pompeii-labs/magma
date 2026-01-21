@@ -40,6 +40,8 @@ export type MagmaLLMConfig = {
 	model: LanguageModel;
 };
 
+export const DEFAULT_MAX_MIDDLEWARE_RETRIES = 5;
+
 export type MagmaAgentProps<STATE, TOOLS extends MagmaToolSet<STATE>> = {
 	state: STATE;
 	llmConfig: MagmaLLMConfig;
@@ -48,8 +50,7 @@ export type MagmaAgentProps<STATE, TOOLS extends MagmaToolSet<STATE>> = {
 	middleware?: MagmaMiddlewareSet<STATE, TOOLS>;
 
 	messageContext?: number;
-	maxMiddlewareRetries?: number;
-	onUsageUpdate?: (usage: MagmaUsage) => void;
+	onUsageUpdate?: (usage: MagmaUsage, options: { state: STATE }) => void;
 	onError?: (error: Error) => void;
 
 	verbose?: boolean;
@@ -66,8 +67,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 
 	messageContext: number;
-	maxMiddlewareRetries: number;
-	onUsageUpdate: (usage: MagmaUsage) => void;
+	onUsageUpdate: (usage: MagmaUsage, options: { state: STATE }) => void;
 	onError: (error: Error) => void;
 
 	verbose?: boolean;
@@ -89,7 +89,6 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		this.middleware = (middleware ?? {}) as MagmaMiddlewareSet<STATE, TOOLS>;
 
 		this.messageContext = props.messageContext ?? -1;
-		this.maxMiddlewareRetries = props.maxMiddlewareRetries ?? 5;
 		this.onUsageUpdate = props.onUsageUpdate ?? (() => {});
 		this.onError =
 			props.onError ??
@@ -119,7 +118,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger?: undefined;
-		ctx?: MagmaCtx;
+		// ctx?: MagmaCtx;
 		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
 	}): Promise<MagmaAssistantMessage | null>;
 
@@ -130,7 +129,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger: keyof TOOLS;
-		ctx?: MagmaCtx;
+		// ctx?: MagmaCtx;
 		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
 	}): Promise<MagmaToolResultMessage | null>;
 
@@ -141,7 +140,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger?: keyof TOOLS;
-		ctx?: MagmaCtx;
+		// ctx?: MagmaCtx;
 		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
 	}): Promise<MagmaAssistantMessage | MagmaToolResultMessage | null> {
 		return (await this._main({
@@ -149,7 +148,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 			userOrToolMessage: args.userMessage,
 			onTrace: args.onTrace,
 			trigger: args.trigger,
-			ctx: args.ctx,
+			// ctx: args.ctx,
 			onStreamChunk: args.onStreamChunk
 		})) as MagmaToolResultMessage | null;
 	}
@@ -317,7 +316,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						} as AssistantModelMessage;
 
 						// Call the onUsageUpdate callback
-						this.onUsageUpdate(await totalUsage);
+						this.onUsageUpdate(await totalUsage, { state: this.state });
 
 						// Add the completion message to the messages array
 						localMessages.push({
@@ -368,10 +367,10 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						}
 
 						// If the onCompletion middleware returns null
-						// That means it failed to meet the middleware requirements in ${this.maxMiddlewareRetries} attempts
+						// That means it failed to run a critical middleware in the specified number of retries
 						if (!onCompletionMiddlewareResult) {
 							throw new Error(
-								`Catastrophic error: failed onCompletion middleware ${this.maxMiddlewareRetries} times`
+								`Catastrophic error: failed critical onCompletion middleware maximum number of times`
 							);
 						}
 
@@ -430,7 +429,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 
 							if (!preToolExecutionMiddlewareResult) {
 								throw new Error(
-									`Catastrophic error: failed preToolExecution middleware ${this.maxMiddlewareRetries} times`
+									`Catastrophic error: failed critical preToolExecution middleware maximum number of times`
 								);
 							}
 
@@ -529,7 +528,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 
 						if (!onMainFinishMiddlewareResult) {
 							throw new Error(
-								`Catastrophic error: failed onMainFinish middleware ${this.maxMiddlewareRetries} times`
+								`Catastrophic error: failed critical onMainFinish middleware maximum number of times`
 							);
 						}
 

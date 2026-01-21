@@ -1,7 +1,7 @@
 import { AssistantModelMessage, TextPart } from "ai";
 import { MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
 import { parseErrorToString } from "../helpers";
-import { MagmaAgent, MagmaCtx } from "../agent";
+import { DEFAULT_MAX_MIDDLEWARE_RETRIES, MagmaAgent, MagmaCtx } from "../agent";
 
 export async function runOnMainFinishMiddleware<STATE, TOOLS extends MagmaToolSet<STATE>>({
 	agent,
@@ -96,7 +96,10 @@ export async function runOnMainFinishMiddleware<STATE, TOOLS extends MagmaToolSe
 							error: errorMessage
 						}
 					});
-					if (ctx.middlewareRetries[name] >= agent.maxMiddlewareRetries) {
+					if (
+						ctx.middlewareRetries[name] >=
+						(mdlwr.maxRetries ?? DEFAULT_MAX_MIDDLEWARE_RETRIES)
+					) {
 						if (mdlwr.critical) {
 							agent.log(
 								`Middleware ${name} failed, and is critical. Returning null...`

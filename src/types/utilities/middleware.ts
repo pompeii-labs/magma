@@ -52,6 +52,7 @@ export type MagmaMiddleware<
 			? (keyof TOOLS)[]
 			: never;
 	critical?: boolean;
+	maxRetries?: number;
 	order?: number;
 };
 

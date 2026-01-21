@@ -55,7 +55,6 @@
 		"zod": "^4.2.1"
 	},
 	"dependencies": {
-		"@openrouter/ai-sdk-provider": "^1.5.4",
 		"dotenv": "^16.4.5",
 		"node-cron": "^3.0.3",
 		"ws": "~8.18.0"

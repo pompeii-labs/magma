@@ -1,22 +1,22 @@
 import { AssistantModelMessage, TextPart } from "ai";
-import { MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
-import { DEFAULT_MAX_MIDDLEWARE_RETRIES, MagmaAgent, MagmaCtx } from "../agent";
+import { MagmaInfo, MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
+import { DEFAULT_MAX_MIDDLEWARE_RETRIES } from "../agent";
 import { parseErrorToString } from "../helpers";
 
 export async function runOnCompletionMiddleware<STATE, TOOLS extends MagmaToolSet<STATE>>({
-	agent,
+	info,
 	middleware,
 	message,
 	trace,
 	requestId,
-	ctx
+	middlewareRetries
 }: {
-	agent: MagmaAgent<STATE, TOOLS>;
+	info: MagmaInfo<STATE, TOOLS>;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 	message: AssistantModelMessage;
 	trace: TraceEvent[];
 	requestId: string;
-	ctx: MagmaCtx;
+	middlewareRetries: Record<string, number>;
 }): Promise<AssistantModelMessage | null> {
 	// get onCompletion middleware
 	const allMiddleware = Object.entries(middleware);
@@ -51,22 +51,9 @@ export async function runOnCompletionMiddleware<STATE, TOOLS extends MagmaToolSe
 						}
 					});
 					// run the middleware on the text block
-					const middlewareResult = (await mdlwr.action(textBlock.text, {
-						state: agent.state
-					})) as string;
-					// if the middleware has a return value, we should update the text block in the result message
-					if (middlewareResult !== undefined) {
-						agent.log(
-							`${name} middleware modified text block` +
-								"\n" +
-								`Original: ${textBlock.text}` +
-								"\n" +
-								`Modified: ${middlewareResult}`
-						);
-						textBlock.text = middlewareResult;
-					}
+					await mdlwr.action(textBlock.text, info);
 
-					delete ctx.middlewareRetries[name];
+					delete middlewareRetries[name];
 
 					trace.push({
 						type: "middleware",
@@ -75,15 +62,14 @@ export async function runOnCompletionMiddleware<STATE, TOOLS extends MagmaToolSe
 						requestId,
 						timestamp: Date.now(),
 						data: {
-							middleware: name,
-							output: middlewareResult
+							middleware: name
 						}
 					});
 				} catch (error) {
 					const errorMessage = parseErrorToString(error);
-					agent.log(`Error in onCompletion middleware (${name}): ${errorMessage}`);
+					info.agent.log(`Error in onCompletion middleware (${name}): ${errorMessage}`);
 
-					ctx.middlewareRetries[name] = (ctx.middlewareRetries[name] ?? 0) + 1;
+					middlewareRetries[name] = (middlewareRetries[name] ?? 0) + 1;
 
 					trace.push({
 						type: "middleware",
@@ -97,16 +83,16 @@ export async function runOnCompletionMiddleware<STATE, TOOLS extends MagmaToolSe
 						}
 					});
 					if (
-						ctx.middlewareRetries[name] >=
+						middlewareRetries[name] >=
 						(mdlwr.maxRetries ?? DEFAULT_MAX_MIDDLEWARE_RETRIES)
 					) {
 						if (mdlwr.critical) {
-							agent.log(
+							info.agent.log(
 								`Middleware ${name} failed, and is critical. Returning null...`
 							);
 							return null;
 						} else {
-							agent.log(
+							info.agent.log(
 								`Middleware ${name} failed, but is not critical. Continuing...`
 							);
 							continue;

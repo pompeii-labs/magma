@@ -1,4 +1,5 @@
-import { MagmaToolCall, MagmaToolResult, MagmaToolSet } from "../index";
+import { MaybePromise } from "bun";
+import { MagmaInfo, MagmaToolCall, MagmaToolResult, MagmaToolSet } from "./index";
 
 export const MagmaMiddlewareTriggers = [
 	"onCompletion",
@@ -9,19 +10,6 @@ export const MagmaMiddlewareTriggers = [
 ] as const;
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
-
-export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType> =
-	TRIGGER extends "preCompletion"
-		? string | void
-		: TRIGGER extends "onCompletion"
-			? string | void
-			: TRIGGER extends "preToolExecution"
-				? MagmaToolCall | void
-				: TRIGGER extends "onToolExecution"
-					? MagmaToolResult | void
-					: TRIGGER extends "onMainFinish"
-						? string | void
-						: never;
 
 export type MagmaMiddlewareParamType<TRIGGER extends MagmaMiddlewareTriggerType> =
 	TRIGGER extends "preToolExecution"
@@ -44,8 +32,8 @@ export type MagmaMiddleware<
 	trigger: TRIGGER;
 	action: (
 		message: MagmaMiddlewareParamType<TRIGGER>,
-		options: { state: STATE }
-	) => Promise<MagmaMiddlewareReturnType<TRIGGER>> | MagmaMiddlewareReturnType<TRIGGER>;
+		info: MagmaInfo<STATE, TOOLS>
+	) => MaybePromise<void>;
 	appliesTo?: TRIGGER extends "preToolExecution"
 		? (keyof TOOLS)[]
 		: TRIGGER extends "onToolExecution"

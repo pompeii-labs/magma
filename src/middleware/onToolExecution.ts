@@ -1,16 +1,15 @@
 import { ToolModelMessage, ToolResultPart } from "ai";
-import { MagmaMiddlewareSet, MagmaToolResult, MagmaToolSet, TraceEvent } from "../types";
+import { MagmaInfo, MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
 import { parseErrorToString } from "../helpers";
-import { MagmaAgent } from "../agent";
 
 export async function runOnToolExecutionMiddleware<STATE, TOOLS extends MagmaToolSet<STATE>>({
-	agent,
+	info,
 	middleware,
 	message,
 	trace,
 	requestId
 }: {
-	agent: MagmaAgent<STATE, TOOLS>;
+	info: MagmaInfo<STATE, TOOLS>;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 	message: ToolModelMessage;
 	trace: TraceEvent[];
@@ -56,20 +55,7 @@ export async function runOnToolExecutionMiddleware<STATE, TOOLS extends MagmaToo
 						continue;
 					}
 					// run the middleware on the tool result
-					const middlewareResult = (await mdlwr.action(toolResult, {
-						state: agent.state
-					})) as MagmaToolResult;
-					// if the middleware has a return value, we should update the tool result in the result message
-					if (middlewareResult !== undefined) {
-						resultContent[i] = middlewareResult;
-						agent.log(
-							`${name} middleware modified tool result block` +
-								"\n" +
-								`Original: ${JSON.stringify(toolResult, null, 2)}` +
-								"\n" +
-								`Modified: ${JSON.stringify(middlewareResult, null, 2)}`
-						);
-					}
+					await mdlwr.action(toolResult, info);
 
 					trace.push({
 						type: "middleware",
@@ -78,8 +64,7 @@ export async function runOnToolExecutionMiddleware<STATE, TOOLS extends MagmaToo
 						requestId,
 						timestamp: Date.now(),
 						data: {
-							middleware: name,
-							output: middlewareResult
+							middleware: name
 						}
 					});
 				} catch (error) {
@@ -99,7 +84,7 @@ export async function runOnToolExecutionMiddleware<STATE, TOOLS extends MagmaToo
 						}
 					});
 
-					agent.log(`Error in onToolExecution middleware (${name}): ${errorString}`);
+					info.agent.log(`Error in onToolExecution middleware (${name}): ${errorString}`);
 
 					toolResult.output = { type: "error-text", value: errorString };
 				}

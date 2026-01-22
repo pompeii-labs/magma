@@ -1,7 +1,7 @@
 import { AssistantModelMessage, ToolModelMessage, ToolResultPart } from "ai";
-import { MagmaToolSet, TraceEvent } from "../types";
-import { MagmaAgent } from "../agent";
+import { MagmaInfo, MagmaToolSet, TraceEvent } from "../types";
 import { parseErrorToString } from "../helpers";
+import { MagmaAgent } from "../agent";
 
 /**
  * Given a tool call, find the appropriate function to handle the run
@@ -15,14 +15,12 @@ import { parseErrorToString } from "../helpers";
  * @returns MagmaUserMessage with tool results
  */
 export async function executeTools<STATE, TOOLS extends MagmaToolSet<STATE>>({
-	agent,
-	tools,
+	info,
 	message,
 	trace,
 	requestId
 }: {
-	agent: MagmaAgent<STATE, TOOLS>;
-	tools: TOOLS;
+	info: MagmaInfo<STATE, TOOLS>;
 	message: AssistantModelMessage;
 	trace: TraceEvent[];
 	requestId: string;
@@ -44,7 +42,7 @@ export async function executeTools<STATE, TOOLS extends MagmaToolSet<STATE>>({
 		let toolResult: ToolResultPart;
 
 		try {
-			const tool = tools[toolCall.toolName];
+			const tool = info.agent.tools[toolCall.toolName];
 			if (!tool) throw new Error(`No tool found to handle call for ${toolCall.toolName}()`);
 
 			// Trace individual tool call execution
@@ -60,13 +58,14 @@ export async function executeTools<STATE, TOOLS extends MagmaToolSet<STATE>>({
 			});
 
 			let result = await tool.execute?.(toolCall.input, {
-				state: agent.state,
 				toolCallId: toolCall.toolCallId,
-				messages: []
+				messages: [],
+				agent: info.agent as unknown as MagmaAgent<STATE, MagmaToolSet<STATE>>,
+				ctx: info.ctx
 			});
 
 			if (!result) {
-				agent.log(`No result returned for ${toolCall.toolName}()`);
+				info.agent.log(`No result returned for ${toolCall.toolName}()`);
 				result = {
 					type: "text",
 					value: "No result returned"
@@ -117,7 +116,7 @@ export async function executeTools<STATE, TOOLS extends MagmaToolSet<STATE>>({
 		} catch (error) {
 			const errorString = parseErrorToString(error);
 			const errorMessage = `Tool Execution Failed for ${toolCall.toolName}() - ${errorString}`;
-			agent.log(errorMessage);
+			info.agent.log(errorMessage);
 
 			trace.push({
 				type: "tool_execution",

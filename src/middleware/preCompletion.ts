@@ -1,16 +1,15 @@
 import { TextPart, UserModelMessage } from "ai";
-import { MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
-import { MagmaAgent } from "../agent";
+import { MagmaInfo, MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
 import { parseErrorToString } from "../helpers";
 
 export async function runPreCompletionMiddleware<STATE, TOOLS extends MagmaToolSet<STATE>>({
-	agent,
+	info,
 	middleware,
 	message,
 	trace,
 	requestId
 }: {
-	agent: MagmaAgent<STATE, TOOLS>;
+	info: MagmaInfo<STATE, TOOLS>;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 	message: UserModelMessage;
 	trace: TraceEvent[];
@@ -49,20 +48,7 @@ export async function runPreCompletionMiddleware<STATE, TOOLS extends MagmaToolS
 						}
 					});
 					// run the middleware on the text block
-					const middlewareResult = (await mdlwr.action(textBlock.text, {
-						state: agent.state
-					})) as string;
-					// if the middleware has a return value, we should update the text block in the result message
-					if (middlewareResult !== undefined) {
-						agent.log(
-							`${name} middleware modified text block` +
-								"\n" +
-								`Original: ${textBlock.text}` +
-								"\n" +
-								`Modified: ${middlewareResult}`
-						);
-						textBlock.text = middlewareResult;
-					}
+					await mdlwr.action(textBlock.text, info);
 
 					trace.push({
 						type: "middleware",
@@ -71,13 +57,12 @@ export async function runPreCompletionMiddleware<STATE, TOOLS extends MagmaToolS
 						requestId,
 						timestamp: Date.now(),
 						data: {
-							middleware: name,
-							output: middlewareResult
+							middleware: name
 						}
 					});
 				} catch (error) {
 					const errorMessage = parseErrorToString(error);
-					agent.log(`Error in preCompletion middleware (${name}): ${errorMessage}`);
+					info.agent.log(`Error in preCompletion middleware (${name}): ${errorMessage}`);
 
 					trace.push({
 						type: "middleware",

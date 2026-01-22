@@ -10,6 +10,7 @@ import {
 } from "ai";
 import {
 	MagmaAssistantMessage,
+	MagmaInfo,
 	MagmaMiddlewareSet,
 	MagmaStreamChunk,
 	MagmaSystemMessage,
@@ -27,14 +28,6 @@ import { executeTools } from "./tools/execute";
 import { runOnToolExecutionMiddleware } from "./middleware/onToolExecution";
 import { runOnMainFinishMiddleware } from "./middleware/onMainFinish";
 
-export type MagmaCtx = {
-	middlewareRetries: {
-		[id: string]: number;
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	[key: string]: any;
-};
-
 export type MagmaLLMConfig = {
 	general?: CallSettings;
 	model: LanguageModel;
@@ -45,29 +38,29 @@ export const DEFAULT_MAX_MIDDLEWARE_RETRIES = 5;
 export type MagmaAgentProps<STATE, TOOLS extends MagmaToolSet<STATE>> = {
 	state: STATE;
 	llmConfig: MagmaLLMConfig;
-	getSystemPrompts?: (state: STATE) => MagmaSystemMessage[];
+	getSystemPrompts?: (info: MagmaInfo<STATE, TOOLS>) => MagmaSystemMessage[];
 	tools?: TOOLS;
 	middleware?: MagmaMiddlewareSet<STATE, TOOLS>;
 
 	messageContext?: number;
-	onUsageUpdate?: (usage: MagmaUsage, options: { state: STATE }) => void;
+	onUsageUpdate?: (usage: MagmaUsage, info: MagmaInfo<STATE, TOOLS>) => void;
 	onError?: (error: Error) => void;
 
 	verbose?: boolean;
 };
 
-export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements MagmaAgentProps<
-	STATE,
-	TOOLS
-> {
+export class MagmaAgent<
+	STATE = Record<string, unknown>,
+	TOOLS extends MagmaToolSet<STATE> = MagmaToolSet<STATE>
+> implements MagmaAgentProps<STATE, TOOLS> {
 	state: STATE;
 	llmConfig: MagmaLLMConfig;
-	getSystemPrompts: (state: STATE) => MagmaSystemMessage[];
+	getSystemPrompts: (info: MagmaInfo<STATE, TOOLS>) => MagmaSystemMessage[] = () => [];
 	tools: TOOLS;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 
 	messageContext: number;
-	onUsageUpdate: (usage: MagmaUsage, options: { state: STATE }) => void;
+	onUsageUpdate: (usage: MagmaUsage, info: MagmaInfo<STATE, TOOLS>) => void;
 	onError: (error: Error) => void;
 
 	verbose?: boolean;
@@ -84,7 +77,6 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		this.state = props.state;
 		this.llmConfig = props.llmConfig;
 
-		this.getSystemPrompts = props.getSystemPrompts ?? (() => []);
 		this.tools = (tools ?? {}) as TOOLS;
 		this.middleware = (middleware ?? {}) as MagmaMiddlewareSet<STATE, TOOLS>;
 
@@ -118,8 +110,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger?: undefined;
-		// ctx?: MagmaCtx;
-		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
+		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
 	}): Promise<MagmaAssistantMessage | null>;
 
 	public async main(args: {
@@ -129,8 +120,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger: keyof TOOLS;
-		// ctx?: MagmaCtx;
-		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
+		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
 	}): Promise<MagmaToolResultMessage | null>;
 
 	public async main(args: {
@@ -140,8 +130,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		userMessage: MagmaUserMessage;
 		onTrace?: (trace: TraceEvent[]) => void;
 		trigger?: keyof TOOLS;
-		// ctx?: MagmaCtx;
-		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
+		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
 	}): Promise<MagmaAssistantMessage | MagmaToolResultMessage | null> {
 		return (await this._main({
 			config: args.config,
@@ -163,8 +152,8 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 		messages?: Array<ModelMessage>;
 		trace?: TraceEvent[];
 		onTrace?: (trace: TraceEvent[]) => void;
-		ctx?: MagmaCtx;
-		onStreamChunk?: (chunk: MagmaStreamChunk, options: { state: STATE }) => void;
+		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
+		middlewareRetries?: Record<string, number>;
 	}): Promise<AssistantModelMessage | MagmaToolResultMessage | null> {
 		const {
 			config,
@@ -172,9 +161,13 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 			onTrace,
 			userOrToolMessage,
 			trigger,
-			ctx = { middlewareRetries: {} },
-			onStreamChunk = () => {}
+			onStreamChunk = () => {},
+			middlewareRetries = {},
 		} = args;
+		const info: MagmaInfo<STATE, TOOLS> = {
+			agent: this,
+			ctx: {}
+		};
 		let originIndex = args.originIndex;
 		const localMessages = [
 			...(args?.messages ?? this.messages.filter((m) => m.role !== "system"))
@@ -207,7 +200,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 							// user message, so we run preCompletion middleware
 							try {
 								preCompletionMiddlewareResult = await runPreCompletionMiddleware({
-									agent: this,
+									info,
 									middleware: this.middleware,
 									message: userOrToolMessage as UserModelMessage,
 									trace,
@@ -264,7 +257,11 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 
 						const toolsArray = Object.entries(this.tools);
 						let enabledToolsArray = toolsArray.filter(([_, tool]) =>
-							"enabled" in tool && tool.enabled ? tool.enabled(this.state) : true
+							"enabled" in tool && tool.enabled
+								? tool.enabled(
+										info as unknown as MagmaInfo<STATE, MagmaToolSet<STATE>>
+									)
+								: true
 						);
 
 						if (trigger !== undefined) {
@@ -292,7 +289,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						const { fullStream, content, totalUsage } = streamText({
 							model: this.llmConfig.model,
 							tools: tools,
-							messages: [...this.getSystemPrompts(this.state), ...completionMessages],
+							messages: [...this.getSystemPrompts(info), ...completionMessages],
 							abortSignal: this.abortControllers.get(requestId)?.signal,
 							...configToUse.general
 						});
@@ -306,7 +303,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						}
 
 						for await (const chunk of fullStream) {
-							onStreamChunk(chunk as MagmaStreamChunk, { state: this.state });
+							onStreamChunk(chunk as MagmaStreamChunk, info);
 						}
 
 						// create the Asisstant message from the completion
@@ -316,7 +313,7 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						} as AssistantModelMessage;
 
 						// Call the onUsageUpdate callback
-						this.onUsageUpdate(await totalUsage, { state: this.state });
+						this.onUsageUpdate(await totalUsage, info);
 
 						// Add the completion message to the messages array
 						localMessages.push({
@@ -329,12 +326,12 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						let onCompletionMiddlewareResult: AssistantModelMessage | null;
 						try {
 							onCompletionMiddlewareResult = await runOnCompletionMiddleware({
-								agent: this,
+								info,
 								middleware: this.middleware,
 								message: completion,
 								trace,
 								requestId,
-								ctx
+								middlewareRetries
 							});
 						} catch (error) {
 							// If the onCompletion middleware fails, we should remove the last message
@@ -359,8 +356,8 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 									trigger,
 									originIndex,
 									trace,
+									middlewareRetries,
 									onTrace,
-									ctx,
 									onStreamChunk
 								})
 							);
@@ -393,12 +390,12 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 							try {
 								preToolExecutionMiddlewareResult =
 									await runPreToolExecutionMiddleware({
-										agent: this,
+										info,
 										middleware: this.middleware,
 										message: onCompletionMiddlewareResult,
 										trace,
 										requestId,
-										ctx
+										middlewareRetries
 									});
 							} catch (error) {
 								// Remove the failing tool call message
@@ -420,8 +417,8 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 										trigger,
 										originIndex,
 										trace,
+										middlewareRetries,
 										onTrace,
-										ctx,
 										onStreamChunk
 									})
 								);
@@ -439,16 +436,15 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 
 							// Execute the tools
 							const toolResultMessage = await executeTools({
-								agent: this,
+								info,
 								state: this.state,
-								tools: this.tools,
 								message: preToolExecutionMiddlewareResult,
 								trace,
 								requestId
 							});
 
 							onToolExecutionMiddlewareResult = await runOnToolExecutionMiddleware({
-								agent: this,
+								info,
 								middleware: this.middleware,
 								message: toolResultMessage,
 								trace,
@@ -480,8 +476,8 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 									trigger,
 									originIndex,
 									trace,
+									middlewareRetries,
 									onTrace,
-									ctx,
 									onStreamChunk
 								})
 							);
@@ -491,12 +487,12 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 						let onMainFinishMiddlewareResult: AssistantModelMessage | null;
 						try {
 							onMainFinishMiddlewareResult = await runOnMainFinishMiddleware({
-								agent: this,
+								info,
 								middleware: this.middleware,
 								message: onCompletionMiddlewareResult,
 								trace,
 								requestId,
-								ctx
+								middlewareRetries
 							});
 						} catch (error) {
 							// If the onMainFinish middleware fails, we should remove the offending message
@@ -519,8 +515,8 @@ export class MagmaAgent<STATE, TOOLS extends MagmaToolSet<STATE>> implements Mag
 									trigger,
 									originIndex,
 									trace,
+									middlewareRetries,
 									onTrace,
-									ctx,
 									onStreamChunk
 								})
 							);

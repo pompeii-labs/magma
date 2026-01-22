@@ -1,15 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Tool, ToolExecutionOptions } from "ai";
+import { MagmaInfo } from ".";
 
-export type MagmaToolCallOptions<STATE> = ToolExecutionOptions & { state: STATE };
+export type MagmaToolCallOptions<STATE> = ToolExecutionOptions &
+	MagmaInfo<STATE, MagmaToolSet<STATE>>;
 type MagmaToolExecuteFunction<STATE, INPUT, OUTPUT> = (
 	input: INPUT,
 	options: MagmaToolCallOptions<STATE>
 ) => AsyncIterable<OUTPUT> | PromiseLike<OUTPUT> | OUTPUT;
 export type MagmaTool<STATE, INPUT, OUTPUT = any> = Omit<Tool<INPUT, OUTPUT>, "execute"> & {
 	execute: MagmaToolExecuteFunction<STATE, INPUT, OUTPUT>;
-	enabled?: (state: STATE) => boolean;
+	enabled?: (info: MagmaInfo<STATE, MagmaToolSet<STATE>>) => boolean;
 };
 
 export type MagmaToolSet<STATE> = Record<

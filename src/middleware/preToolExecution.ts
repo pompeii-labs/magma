@@ -1,22 +1,22 @@
 import { AssistantModelMessage, ToolCallPart } from "ai";
-import { MagmaMiddlewareSet, MagmaToolCall, MagmaToolSet, TraceEvent } from "../types";
-import { DEFAULT_MAX_MIDDLEWARE_RETRIES, MagmaAgent, MagmaCtx } from "../agent";
+import { MagmaInfo, MagmaMiddlewareSet, MagmaToolSet, TraceEvent } from "../types";
+import { DEFAULT_MAX_MIDDLEWARE_RETRIES } from "../agent";
 import { parseErrorToString } from "../helpers";
 
 export async function runPreToolExecutionMiddleware<STATE, TOOLS extends MagmaToolSet<STATE>>({
-	agent,
+	info,
 	middleware,
 	message,
 	trace,
 	requestId,
-	ctx
+	middlewareRetries
 }: {
-	agent: MagmaAgent<STATE, TOOLS>;
+	info: MagmaInfo<STATE, TOOLS>;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
 	message: AssistantModelMessage;
 	trace: TraceEvent[];
 	requestId: string;
-	ctx: MagmaCtx;
+	middlewareRetries: Record<string, number>;
 }): Promise<AssistantModelMessage | null> {
 	// get preToolExecution middleware
 	const allMiddleware = Object.entries(middleware);
@@ -59,22 +59,9 @@ export async function runPreToolExecutionMiddleware<STATE, TOOLS extends MagmaTo
 						continue;
 					}
 					// run the middleware on the tool call
-					const middlewareResult = (await mdlwr.action(toolCall, {
-						state: agent.state
-					})) as MagmaToolCall;
-					// if the middleware has a return value, we should update the tool call in the result message
-					if (middlewareResult !== undefined) {
-						agent.log(
-							`${name} middleware modified tool call block` +
-								"\n" +
-								`Original: ${JSON.stringify(toolCall, null, 2)}` +
-								"\n" +
-								`Modified: ${JSON.stringify(middlewareResult, null, 2)}`
-						);
-						resultContent[i] = middlewareResult;
-					}
+					await mdlwr.action(toolCall, info);
 
-					delete ctx.middlewareRetries[name];
+					delete middlewareRetries[name];
 
 					trace.push({
 						type: "middleware",
@@ -83,15 +70,16 @@ export async function runPreToolExecutionMiddleware<STATE, TOOLS extends MagmaTo
 						requestId,
 						timestamp: Date.now(),
 						data: {
-							middleware: name,
-							output: middlewareResult
+							middleware: name
 						}
 					});
 				} catch (error) {
 					const errorMessage = parseErrorToString(error);
-					agent.log(`Error in preToolExecution middleware (${name}): ${errorMessage}`);
+					info.agent.log(
+						`Error in preToolExecution middleware (${name}): ${errorMessage}`
+					);
 
-					ctx.middlewareRetries[name] = (ctx.middlewareRetries[name] ?? 0) + 1;
+					middlewareRetries[name] = (middlewareRetries[name] ?? 0) + 1;
 
 					trace.push({
 						type: "middleware",
@@ -105,16 +93,16 @@ export async function runPreToolExecutionMiddleware<STATE, TOOLS extends MagmaTo
 						}
 					});
 					if (
-						ctx.middlewareRetries[name] >=
+						middlewareRetries[name] >=
 						(mdlwr.maxRetries ?? DEFAULT_MAX_MIDDLEWARE_RETRIES)
 					) {
 						if (mdlwr.critical) {
-							agent.log(
+							info.agent.log(
 								`Middleware ${name} failed, and is critical. Returning null...`
 							);
 							return null;
 						} else {
-							agent.log(
+							info.agent.log(
 								`Middleware ${name} failed, but is not critical. Continuing...`
 							);
 							continue;

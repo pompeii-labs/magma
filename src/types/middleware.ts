@@ -44,10 +44,10 @@ export type MagmaMiddleware<
 	order?: number;
 };
 
-export type MagmaMiddlewareSet<STATE, TOOLS extends MagmaToolSet<STATE>> = Record<
-	string,
-	MagmaMiddleware<STATE, TOOLS>
->;
+export type MagmaMiddlewareSet<
+	STATE = Record<string, unknown>,
+	TOOLS extends MagmaToolSet<STATE> = MagmaToolSet<STATE>
+> = Record<string, MagmaMiddleware<STATE, TOOLS>>;
 
 export const magmaMiddleware = <
 	STATE,

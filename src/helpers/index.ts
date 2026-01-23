@@ -1,19 +1,5 @@
 import { MagmaAssistantMessage, MagmaMessage } from "../types";
 
-export function mapNumberInRange(
-	n: number,
-	min: number,
-	max: number,
-	newMin: number,
-	newMax: number
-): number {
-	return ((n - min) * (newMax - newMin)) / (max - min) + newMin;
-}
-
-export async function sleep(ms: number): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function parseErrorToString(error: unknown): string {
 	return parseErrorToError(error).message;
 }

@@ -82,6 +82,7 @@ export class MagmaAgent<
 
 		this.messageContext = props.messageContext ?? -1;
 		this.onUsageUpdate = props.onUsageUpdate ?? (() => {});
+		this.getSystemPrompts = props.getSystemPrompts ?? (() => []);
 		this.onError =
 			props.onError ??
 			((error) => {
@@ -162,7 +163,7 @@ export class MagmaAgent<
 			userOrToolMessage,
 			trigger,
 			onStreamChunk = () => {},
-			middlewareRetries = {},
+			middlewareRetries = {}
 		} = args;
 		const info: MagmaInfo<STATE, TOOLS> = {
 			agent: this,

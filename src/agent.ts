@@ -86,7 +86,8 @@ export class MagmaAgent<
 		this.onError =
 			props.onError ??
 			((error) => {
-				console.error(parseErrorToString(error));
+				console.error(error);
+				throw error;
 			});
 
 		this.verbose = props.verbose;

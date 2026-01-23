@@ -43,13 +43,13 @@ When `main()` is called with a `trigger` parameter:
 
 ### Middleware Types
 
-| Trigger            | Runs On                 | Error Behavior                                   |
-| ------------------ | ----------------------- | ------------------------------------------------ |
-| `preCompletion`    | User message text       | Throws, returns error as response                |
-| `onCompletion`     | Assistant message text  | Throws, triggers regeneration with error context |
-| `preToolExecution` | Tool calls              | Throws, triggers regeneration with error context |
-| `onToolExecution`  | Tool results            | Replaces tool output with error                  |
-| `onMainFinish`     | Final assistant message | Throws, triggers regeneration with error context |
+| Trigger            | Runs On                 | Error Behavior                                   | Return Value                     |
+| ------------------ | ----------------------- | ------------------------------------------------ | -------------------------------- |
+| `preCompletion`    | User message text       | Throws, returns error as response                | void                             |
+| `onCompletion`     | Assistant message text  | Throws, triggers regeneration with error context | string (optional, replaces text) |
+| `preToolExecution` | Tool calls              | Throws, triggers regeneration with error context | void                             |
+| `onToolExecution`  | Tool results            | Replaces tool output with error                  | void                             |
+| `onMainFinish`     | Final assistant message | Throws, triggers regeneration with error context | string (optional, replaces text) |
 
 ### Retry Logic
 

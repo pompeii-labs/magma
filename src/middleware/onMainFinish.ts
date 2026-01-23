@@ -51,7 +51,19 @@ export async function runOnMainFinishMiddleware<STATE, TOOLS extends MagmaToolSe
 						}
 					});
 					// run the middleware on the text block
-					await mdlwr.action(textBlock.text, info);
+					const middlewareResult = await mdlwr.action(textBlock.text, info);
+
+					// if the middleware has a return value, we should update the text block in the result message
+					if (middlewareResult !== undefined) {
+						info.agent.log(
+							`${name} middleware modified text block` +
+								"\n" +
+								`Original: ${textBlock.text}` +
+								"\n" +
+								`Modified: ${middlewareResult}`
+						);
+						textBlock.text = middlewareResult;
+					}
 
 					delete middlewareRetries[name];
 
@@ -62,7 +74,8 @@ export async function runOnMainFinishMiddleware<STATE, TOOLS extends MagmaToolSe
 						requestId,
 						timestamp: Date.now(),
 						data: {
-							middleware: name
+							middleware: name,
+							output: middlewareResult
 						}
 					});
 				} catch (error) {

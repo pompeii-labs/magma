@@ -24,6 +24,19 @@ export type MagmaMiddlewareParamType<TRIGGER extends MagmaMiddlewareTriggerType>
 						? string
 						: never;
 
+export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType> =
+	TRIGGER extends "preCompletion"
+		? void
+		: TRIGGER extends "onCompletion"
+			? string | void
+			: TRIGGER extends "preToolExecution"
+				? void
+				: TRIGGER extends "onToolExecution"
+					? void
+					: TRIGGER extends "onMainFinish"
+						? string | void
+						: never;
+
 export type MagmaMiddleware<
 	STATE,
 	TOOLS extends MagmaToolSet<STATE>,
@@ -33,7 +46,7 @@ export type MagmaMiddleware<
 	action: (
 		message: MagmaMiddlewareParamType<TRIGGER>,
 		info: MagmaInfo<STATE, TOOLS>
-	) => MaybePromise<void>;
+	) => MaybePromise<MagmaMiddlewareReturnType<TRIGGER>>;
 	appliesTo?: TRIGGER extends "preToolExecution"
 		? (keyof TOOLS)[]
 		: TRIGGER extends "onToolExecution"

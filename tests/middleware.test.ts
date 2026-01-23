@@ -7,6 +7,7 @@ import { runOnToolExecutionMiddleware } from "../src/middleware/onToolExecution"
 import { runOnMainFinishMiddleware } from "../src/middleware/onMainFinish";
 import { MagmaAgent } from "../src/agent";
 import type { MagmaMiddlewareSet, TraceEvent } from "../src/types";
+import { magmaMiddleware } from "../src/types";
 import type { UserModelMessage, AssistantModelMessage, ToolModelMessage } from "ai";
 
 function createMockInfo() {
@@ -258,6 +259,80 @@ describe("runOnCompletionMiddleware", () => {
 		});
 
 		expect(result).toBeNull();
+	});
+
+	test("replaces text when middleware returns a string", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			replacer: magmaMiddleware({
+				trigger: "onCompletion",
+				action: async (text) => {
+					return text.toUpperCase();
+				}
+			})
+		};
+
+		const result = await runOnCompletionMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "hello world" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "HELLO WORLD" }]);
+	});
+
+	test("does not replace text when middleware returns undefined", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			noChange: magmaMiddleware({
+				trigger: "onCompletion",
+				action: async () => {
+					// returns undefined implicitly
+				}
+			})
+		};
+
+		const result = await runOnCompletionMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "original text" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "original text" }]);
+	});
+
+	test("chains multiple middleware return values", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			first: magmaMiddleware({
+				trigger: "onCompletion",
+				order: 1,
+				action: async (text) => {
+					return text + " - first";
+				}
+			}),
+			second: magmaMiddleware({
+				trigger: "onCompletion",
+				order: 2,
+				action: async (text) => {
+					return text + " - second";
+				}
+			})
+		};
+
+		const result = await runOnCompletionMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "start" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "start - first - second" }]);
 	});
 });
 
@@ -670,5 +745,79 @@ describe("runOnMainFinishMiddleware", () => {
 		expect(trace[0].phase).toBe("start");
 		expect(trace[1].phase).toBe("end");
 		expect(trace[1].phase === "end" && trace[1].status).toBe("success");
+	});
+
+	test("replaces text when middleware returns a string", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			replacer: magmaMiddleware({
+				trigger: "onMainFinish",
+				action: async (text) => {
+					return `Modified: ${text}`;
+				}
+			})
+		};
+
+		const result = await runOnMainFinishMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "Final response" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "Modified: Final response" }]);
+	});
+
+	test("does not replace text when middleware returns undefined", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			noChange: magmaMiddleware({
+				trigger: "onMainFinish",
+				action: async () => {
+					// returns undefined implicitly
+				}
+			})
+		};
+
+		const result = await runOnMainFinishMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "unchanged" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "unchanged" }]);
+	});
+
+	test("chains multiple middleware return values", async () => {
+		const middleware: MagmaMiddlewareSet = {
+			first: magmaMiddleware({
+				trigger: "onMainFinish",
+				order: 1,
+				action: async (text) => {
+					return `[${text}]`;
+				}
+			}),
+			second: magmaMiddleware({
+				trigger: "onMainFinish",
+				order: 2,
+				action: async (text) => {
+					return `(${text})`;
+				}
+			})
+		};
+
+		const result = await runOnMainFinishMiddleware({
+			info: createMockInfo(),
+			middleware,
+			message: { role: "assistant", content: "done" },
+			trace: [],
+			requestId: "req-1",
+			middlewareRetries: {}
+		});
+
+		expect(result?.content).toEqual([{ type: "text", text: "([done])" }]);
 	});
 });

@@ -73,13 +73,13 @@ const agent = new MagmaAgent(
 
 Middleware lets you intercept and modify the agent's behavior at different points in the execution flow.
 
-| Trigger            | Runs On           | Error Behavior             |
-| ------------------ | ----------------- | -------------------------- |
-| `preCompletion`    | User message      | Returns error as response  |
-| `onCompletion`     | Assistant message | Triggers regeneration      |
-| `preToolExecution` | Tool calls        | Triggers regeneration      |
-| `onToolExecution`  | Tool results      | Replaces output with error |
-| `onMainFinish`     | Final response    | Triggers regeneration      |
+| Trigger            | Runs On           | Error Behavior             | Return Value                     |
+| ------------------ | ----------------- | -------------------------- | -------------------------------- |
+| `preCompletion`    | User message      | Returns error as response  | void                             |
+| `onCompletion`     | Assistant message | Triggers regeneration      | string (optional, replaces text) |
+| `preToolExecution` | Tool calls        | Triggers regeneration      | void                             |
+| `onToolExecution`  | Tool results      | Replaces output with error | void                             |
+| `onMainFinish`     | Final response    | Triggers regeneration      | string (optional, replaces text) |
 
 ```ts
 const agent = new MagmaAgent(

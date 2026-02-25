@@ -118,6 +118,9 @@ export class OpenAIProvider extends Provider {
 
                         if (!streamedToolCalls[index]) {
                             streamedToolCalls[index] = toolCall;
+                            if (streamedToolCalls[index].function && streamedToolCalls[index].function.arguments == null) {
+                                streamedToolCalls[index].function.arguments = '';
+                            }
                         } else {
                             if (streamedToolCalls[index].function) {
                                 streamedToolCalls[index].function.arguments +=

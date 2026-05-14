@@ -62,77 +62,6 @@ console.log(reply.content);
 - **Powerful**: Add tools and middleware when you need them
 - **Observable**: See exactly what your agent is doing
 
-## ❓ FAQ
-
-### What makes Magma different from other agent frameworks?
-
-Unlike LangChain's chain-based approach or CrewAI's role-based orchestration, Magma uses a **class-based architecture** where you extend `MagmaAgent` directly. This means:
-- No complex abstractions - just write methods
-- Decorators for tools, middleware, hooks, and jobs
-- State management built into the agent instance
-- TypeScript-first with full type safety
-
-### Which AI providers are supported?
-
-Magma supports multiple providers out of the box:
-- **OpenAI** (default): GPT-4o, GPT-4, GPT-3.5
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus
-- **Groq**: Llama 3.1, Mixtral
-- Any OpenAI-compatible API
-
-Switch providers with `setProviderConfig()` - no code changes needed for your tools.
-
-### What are middleware and how do I use them?
-
-Middleware lets you intercept agent actions at specific lifecycle points:
-- `preCompletion`: Before LLM call
-- `onCompletion`: After text response
-- `preToolExecution`: Before tool runs
-- `onToolExecution`: After tool completes
-
-Use them for logging, validation, rate limiting, or custom error handling.
-
-### Can I schedule recurring tasks?
-
-Yes! Use the `@job` decorator with cron syntax:
-```ts
-@job("0 0 * * *")  // Daily at midnight
-static async dailyCleanup() { ... }
-```
-
-Jobs run independently and can include timezone settings.
-
-### How do I deploy my agent?
-
-Two options:
-1. **MagmaDeploy platform**: Deploy in seconds with one click - handles scaling, monitoring, and updates
-2. **Self-hosted**: Run in your own Node.js environment - full control over infrastructure
-
-### What if my agent throws an error?
-
-Implement `onError(error: Error)` to handle errors gracefully:
-```ts
-async onError(error: Error) {
-    await this.notifyAdmin(error);
-    // Agent will attempt recovery automatically
-}
-```
-
-### Can I expose my agent as an API?
-
-Yes! Use `@hook` decorators to create REST endpoints:
-```ts
-@hook('notification')
-static async handleNotification(req: Request) { ... }
-```
-Hooks are available at `/hooks/{hook_name}` in the Magma API.
-
-### Where can I get help?
-
-- [Slack Community](https://join.slack.com/t/magmacommunity/shared_invite/zt-2tghhq3av-Xn9k9ntwN5ZwqvxbWcfsTg) - chat with other developers
-- [GitHub Issues](https://github.com/pompeii-labs/magma/issues) - report bugs or request features
-- [Chat with Dialog](https://chat.productdialog.com/ac94ab36-c5bb-4b54-a195-2b6b2499dcff) - try a live Magma agent
-
 ## 🛠 Examples
 
 ### Add Tools
@@ -396,3 +325,150 @@ class MyAgent extends MagmaAgent {
 ## 📝 License
 
 Magma is [Apache 2.0 licensed](LICENSE).
+
+## ❓ FAQ
+
+### What is Magma and how is it different from other agent frameworks?
+
+Magma is a TypeScript framework that lets you create AI agents with minimal code. Unlike LangChain (chain-based) or CrewAI (role-playing), Magma uses **class-based agents** with decorators:
+
+- **Class-based design**: Extend `MagmaAgent` and add your own methods
+- **Decorator syntax**: `@tool`, `@middleware`, `@job`, `@hook` for clean code
+- **No complex abstractions**: Write logic you want your agent to have, not chains/orchestration
+- **Observable by default**: Built-in logging and event handlers
+
+### How do I get started quickly?
+
+```bash
+npm i @pompeii-labs/magma
+```
+
+Create your first agent:
+```ts
+import { MagmaAgent } from "@pompeii-labs/magma";
+
+class MyAgent extends MagmaAgent {
+    getSystemPrompts() {
+        return [{ role: "system", content: "You are a helpful assistant" }];
+    }
+}
+
+const agent = new MyAgent();
+const reply = await agent.main();
+```
+
+### Which AI providers are supported?
+
+Magma supports multiple providers with the same code:
+
+| Provider | Configuration |
+|----------|--------------|
+| **OpenAI** (default) | `{ provider: "openai", model: "gpt-4o" }` |
+| **Anthropic** | `{ provider: "anthropic", model: "claude-3.5-sonnet" }` |
+| **Groq** | `{ provider: "groq", model: "llama-3.1-70b-versatile" }` |
+
+Set in constructor or via `setProviderConfig()`.
+
+### How do I add tools to my agent?
+
+Use the `@tool` and `@toolparam` decorators:
+
+```ts
+import { tool, toolparam } from "@pompeii-labs/magma/decorators";
+
+class MyAgent extends MagmaAgent {
+    @tool({ name: "search", description: "Search database" })
+    @toolparam({ key: "query", type: "string", description: "Search query", required: true })
+    async searchDatabase(call: MagmaToolCall) {
+        const { query } = call.fn_args;
+        return "Results: " + JSON.stringify(await this.search(query));
+    }
+}
+```
+
+**Important**: Every tool must return a string.
+
+### What is middleware and how do I use it?
+
+Middleware adds custom logic before/after tool execution. Types:
+
+- `preCompletion`: Before LLM call
+- `onCompletion`: After agent generates text
+- `preToolExecution`: Before tool runs
+- `onToolExecution`: After tool runs
+
+```ts
+@middleware("onCompletion")
+async validateResponse(message) {
+    if (message.content.includes("bad word")) {
+        throw new Error("Please rephrase without bad words.");
+    }
+}
+```
+
+### How do I schedule recurring jobs?
+
+Use the `@job` decorator with cron syntax:
+
+```ts
+@job("0 0 * * *")  // Daily at midnight
+static async dailyCleanup() {
+    await this.cleanDatabase();
+}
+```
+
+Jobs should be **static methods** with no parameters.
+
+### How do I expose my agent as an API?
+
+Use the `@hook` decorator:
+
+```ts
+@hook('notification')
+static async handleNotification(req: Request) {
+    await this.processNotification(req.body);
+}
+```
+
+Hooks are exposed at `/hooks/{hook_name}`.
+
+### How do I manage state across tools?
+
+Store data in agent fields and access via `this`:
+
+```ts
+class MyAgent extends MagmaAgent {
+    counter: number;
+
+    async setup() {
+        this.counter = 0;
+    }
+
+    @tool({ description: "Increment counter" })
+    async increment() {
+        this.counter++;
+        return `Counter: ${this.counter}`;
+    }
+}
+```
+
+### How do I deploy my agent?
+
+Use [MagmaDeploy](https://magmadeploy.com) for hosted deployment, or run locally with `node`/`ts-node`.
+
+### What lifecycle methods can I override?
+
+| Method | Purpose |
+|--------|---------|
+| `setup()` | Initialize resources, connect to databases |
+| `receive(message)` | Process incoming messages before main() |
+| `cleanup()` | Clean up resources on shutdown |
+| `onError(error)` | Handle errors |
+| `onUsageUpdate(usage)` | Track token usage |
+| `onStreamChunk(chunk)` | Process streaming responses |
+
+### Where can I get help?
+
+- [Slack Community](https://join.slack.com/t/magmacommunity)
+- [GitHub Issues](https://github.com/pompeii-labs/magma/issues)
+- Try [Dialog](https://chat.productdialog.com) - a live agent built with Magma

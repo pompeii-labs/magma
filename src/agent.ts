@@ -1,6 +1,6 @@
 import {
 	AssistantModelMessage,
-	CallSettings,
+	CallSettings as AICallSettings,
 	LanguageModel,
 	ModelMessage,
 	streamText,
@@ -27,6 +27,17 @@ import { runPreToolExecutionMiddleware } from "./middleware/preToolExecution";
 import { executeTools } from "./tools/execute";
 import { runOnToolExecutionMiddleware } from "./middleware/onToolExecution";
 import { runOnMainFinishMiddleware } from "./middleware/onMainFinish";
+
+type CallSettings = Omit<AICallSettings, "abortSignal">;
+
+function isAbortError(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"name" in error &&
+		error.name === "AbortError"
+	);
+}
 
 export type MagmaLLMConfig = {
 	general?: CallSettings;
@@ -181,13 +192,34 @@ export class MagmaAgent<
 			const mainPromise = new Promise<AssistantModelMessage | ToolModelMessage | null>(
 				// eslint-disable-next-line no-async-promise-executor
 				async (resolve, reject) => {
+					let hasSettled = false;
+					const resolveOnce = (
+						value: AssistantModelMessage | ToolModelMessage | null
+					): void => {
+						if (hasSettled) return;
+						hasSettled = true;
+						resolve(value);
+					};
+					const resolveNullOnce = (message?: string): void => {
+						if (!hasSettled && message) {
+							this.log(message);
+						}
+						resolveOnce(null);
+					};
+					const rejectOnce = (error: unknown): void => {
+						if (hasSettled) return;
+						hasSettled = true;
+						reject(error);
+					};
+
 					try {
 						const abortController = new AbortController();
 						this.abortControllers.set(requestId, abortController);
 						abortController.signal.onabort = () => {
 							this.abortControllers.delete(requestId);
-							this.log(`Abort signal received for request ${requestId}`);
-							return resolve(null);
+							return resolveNullOnce(
+								`Abort signal received for request ${requestId}`
+							);
 						};
 
 						// Save the index of the newest user message
@@ -217,7 +249,7 @@ export class MagmaAgent<
 									this.log(
 										"Resolving error message as tool call due to trigger being specified"
 									);
-									return resolve({
+									return resolveOnce({
 										role: "tool",
 										content: [
 											{
@@ -235,7 +267,7 @@ export class MagmaAgent<
 
 								// Return the error message as the assistant message if we are not in trigger mode
 								this.log("Resolving error message as assistant message");
-								return resolve({
+								return resolveOnce({
 									role: "assistant",
 									content: parseErrorToString(error)
 								});
@@ -275,7 +307,7 @@ export class MagmaAgent<
 								this.log(
 									`No enabled tool matched "${trigger.toString()}", resolving null`
 								);
-								return resolve(null);
+								return resolveNullOnce();
 							}
 						}
 
@@ -286,42 +318,86 @@ export class MagmaAgent<
 
 						const tools = Object.fromEntries(finalToolsArray) as ToolSet;
 
+						// Ensure the request is still active before creating a stream.
+						const activeAbortController = this.abortControllers.get(requestId);
+						if (!activeAbortController) {
+							return resolveNullOnce(
+								`No matching abort controller found for ${requestId} before streamText call, resolving null`
+							);
+						}
+
 						// get the completion
 						// we will always use a stream, and only use the onStreamChunk callback if stream mode is active
 						const { fullStream, content, totalUsage } = streamText({
 							model: this.llmConfig.model,
 							tools: tools,
-							messages: [...this.getSystemPrompts(info), ...completionMessages],
-							abortSignal: this.abortControllers.get(requestId)?.signal,
-							...configToUse.general
+							system: this.getSystemPrompts(info),
+							messages: completionMessages,
+							...configToUse.general,
+							abortSignal: activeAbortController.signal
 						});
+						const contentResult = Promise.resolve(content).catch((error: unknown) => {
+							if (isAbortError(error) || !this.abortControllers.has(requestId)) {
+								return null;
+							}
 
-						// Ensure the abort controller is still active
-						if (!this.abortControllers.has(requestId)) {
-							this.log(
-								`No matching abort controller found for ${requestId} after streamText call, resolving null`
-							);
-							return resolve(null);
+							throw error;
+						});
+						const totalUsageResult = Promise.resolve(totalUsage).catch(
+							(error: unknown) => {
+								if (isAbortError(error) || !this.abortControllers.has(requestId)) {
+									return null;
+								}
+
+								throw error;
+							}
+						);
+
+						let completion: AssistantModelMessage;
+						try {
+							for await (const chunk of fullStream) {
+								onStreamChunk(chunk as MagmaStreamChunk, info);
+							}
+
+							if (!this.abortControllers.has(requestId)) {
+								return resolveNullOnce(
+									`No matching abort controller found for ${requestId} after stream, resolving null`
+								);
+							}
+
+							const completionContent = await contentResult;
+							if (completionContent === null) {
+								return resolveNullOnce(
+									`Request ${requestId} aborted before content resolved`
+								);
+							}
+
+							completion = {
+								role: "assistant",
+								content: completionContent
+							} as AssistantModelMessage;
+
+							const usage = await totalUsageResult;
+							if (usage === null) {
+								return resolveNullOnce(
+									`Request ${requestId} aborted before usage resolved`
+								);
+							}
+
+							// Call the onUsageUpdate callback
+							this.onUsageUpdate(usage, info);
+						} catch (error) {
+							if (isAbortError(error)) {
+								return resolveNullOnce(
+									`Request ${requestId} aborted, resolving null`
+								);
+							}
+
+							throw error;
 						}
-
-						for await (const chunk of fullStream) {
-							onStreamChunk(chunk as MagmaStreamChunk, info);
-						}
-
-						// create the Asisstant message from the completion
-						const completion = {
-							role: "assistant",
-							content: await content
-						} as AssistantModelMessage;
-
-						// Call the onUsageUpdate callback
-						this.onUsageUpdate(await totalUsage, info);
 
 						// Add the completion message to the messages array
-						localMessages.push({
-							role: "assistant",
-							content: await content
-						} as AssistantModelMessage);
+						localMessages.push(completion);
 
 						// Run the onCompletion middleware
 						// this will only affect text content from the assistant
@@ -350,7 +426,7 @@ export class MagmaAgent<
 							});
 
 							// Trigger another completion with the error message as context
-							return resolve(
+							return resolveOnce(
 								await this._main({
 									config: configToUse,
 									messages: localMessages,
@@ -411,7 +487,7 @@ export class MagmaAgent<
 									content: parseErrorToString(error)
 								});
 
-								return resolve(
+								return resolveOnce(
 									await this._main({
 										config: configToUse,
 										messages: localMessages,
@@ -455,10 +531,9 @@ export class MagmaAgent<
 
 							// If the abort controller is not active, return null
 							if (!this.abortControllers.has(requestId)) {
-								this.log(
+								return resolveNullOnce(
 									`No matching abort controller found for ${requestId} after onToolExecutionMiddleware, resolving null`
 								);
-								return resolve(null);
 							}
 
 							// if we are in trigger mode, the resolve the tool result
@@ -466,11 +541,11 @@ export class MagmaAgent<
 								this.log(
 									`Resolving tool result due to trigger mode being specified`
 								);
-								return resolve(onToolExecutionMiddlewareResult);
+								return resolveOnce(onToolExecutionMiddlewareResult);
 							}
 
 							// Trigger another completion with the tool result because last message was a tool call and we are not in trigger mode
-							return resolve(
+							return resolveOnce(
 								await this._main({
 									config: configToUse,
 									messages: localMessages,
@@ -509,7 +584,7 @@ export class MagmaAgent<
 								content: parseErrorToString(error)
 							});
 
-							return resolve(
+							return resolveOnce(
 								await this._main({
 									config: configToUse,
 									messages: localMessages,
@@ -541,9 +616,9 @@ export class MagmaAgent<
 						// update the main agent message history
 						this.messages.push(...localMessages.slice(originIndex));
 
-						return resolve(onMainFinishMiddlewareResult);
+						return resolveOnce(onMainFinishMiddlewareResult);
 					} catch (error) {
-						return reject(error);
+						return rejectOnce(error);
 					}
 				}
 			);

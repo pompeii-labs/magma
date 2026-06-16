@@ -1,7 +1,6 @@
 import { AssistantModelMessage, ToolModelMessage, ToolResultPart } from "ai";
-import { MagmaInfo, MagmaToolSet, TraceEvent } from "../types";
+import { MagmaInfo, MagmaToolCallOptions, MagmaToolSet, TraceEvent } from "../types";
 import { parseErrorToString } from "../helpers";
-import { MagmaAgent } from "../agent";
 
 /**
  * Given a tool call, find the appropriate function to handle the run
@@ -57,10 +56,17 @@ export async function executeTools<STATE, TOOLS extends MagmaToolSet<STATE>>({
 				}
 			});
 
-			let result = await tool.execute?.(toolCall.input, {
+			const execute = tool.execute as
+				| ((
+						input: unknown,
+						options: MagmaToolCallOptions<STATE>
+				  ) => ReturnType<NonNullable<typeof tool.execute>>)
+				| undefined;
+
+			let result = await execute?.(toolCall.input, {
 				toolCallId: toolCall.toolCallId,
 				messages: [],
-				agent: info.agent as unknown as MagmaAgent<STATE, MagmaToolSet<STATE>>,
+				agent: info.agent,
 				ctx: info.ctx
 			});
 

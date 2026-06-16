@@ -14,6 +14,7 @@ import {
 	MagmaMiddlewareSet,
 	MagmaStreamChunk,
 	MagmaSystemMessage,
+	MagmaToolInfo,
 	MagmaToolResultMessage,
 	MagmaToolSet,
 	MagmaUsage,
@@ -290,13 +291,16 @@ export class MagmaAgent<
 								: localMessages.slice(-this.messageContext);
 
 						const toolsArray = Object.entries(this.tools);
-						let enabledToolsArray = toolsArray.filter(([_, tool]) =>
-							"enabled" in tool && tool.enabled
-								? tool.enabled(
-										info as unknown as MagmaInfo<STATE, MagmaToolSet<STATE>>
-									)
-								: true
-						);
+						let enabledToolsArray = toolsArray.filter(([_, tool]) => {
+							const enabled =
+								"enabled" in tool
+									? (tool.enabled as
+											| ((info: MagmaToolInfo<STATE>) => boolean)
+											| undefined)
+									: undefined;
+
+							return enabled ? enabled(info) : true;
+						});
 
 						if (trigger !== undefined) {
 							enabledToolsArray = enabledToolsArray.filter(

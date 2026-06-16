@@ -67,5 +67,5 @@ export const magmaMiddleware = <
 	TOOLS extends MagmaToolSet<STATE>,
 	TRIGGER extends MagmaMiddlewareTriggerType
 >(
-	tool: MagmaMiddleware<STATE, TOOLS, TRIGGER>
-) => tool as MagmaMiddleware<STATE, TOOLS, TRIGGER>;
+	middleware: MagmaMiddleware<STATE, TOOLS, TRIGGER>
+) => middleware as MagmaMiddleware<STATE, TOOLS, TRIGGER>;

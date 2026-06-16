@@ -53,7 +53,9 @@ export async function runPreToolExecutionMiddleware<STATE, TOOLS extends MagmaTo
 					// check if the middleware is supposed to run for this tool call
 					if (
 						mdlwr.appliesTo !== undefined &&
-						!mdlwr.appliesTo.includes(toolCall.toolName)
+						!(Array.isArray(mdlwr.appliesTo)
+							? mdlwr.appliesTo.includes(toolCall.toolName)
+							: mdlwr.appliesTo === toolCall.toolName)
 					) {
 						// this middleware should not run on this tool call
 						continue;

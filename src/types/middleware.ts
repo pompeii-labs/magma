@@ -1,5 +1,5 @@
 import { MaybePromise } from "bun";
-import { MagmaInfo, MagmaToolCall, MagmaToolResult, MagmaToolSet } from "./index";
+import { MagmaToolCall, MagmaToolInfo, MagmaToolResult, MagmaToolSet } from "./index";
 
 export const MagmaMiddlewareTriggers = [
 	"onCompletion",
@@ -37,35 +37,51 @@ export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType
 						? string | void
 						: never;
 
+export type MagmaMiddlewareInfo<STATE> = MagmaToolInfo<STATE>;
+type MagmaMiddlewareToolKey<TOOLS> = Extract<keyof TOOLS, string>;
+type MagmaMiddlewareAppliesTo<TOOL_NAME extends string> = TOOL_NAME | readonly TOOL_NAME[];
+
 export type MagmaMiddleware<
 	STATE,
-	TOOLS extends MagmaToolSet<STATE>,
+	TOOL_NAME extends string = string,
 	TRIGGER extends MagmaMiddlewareTriggerType = MagmaMiddlewareTriggerType
 > = {
 	trigger: TRIGGER;
 	action: (
 		message: MagmaMiddlewareParamType<TRIGGER>,
-		info: MagmaInfo<STATE, TOOLS>
+		info: MagmaMiddlewareInfo<STATE>
 	) => MaybePromise<MagmaMiddlewareReturnType<TRIGGER>>;
 	appliesTo?: TRIGGER extends "preToolExecution"
-		? (keyof TOOLS)[]
+		? MagmaMiddlewareAppliesTo<TOOL_NAME>
 		: TRIGGER extends "onToolExecution"
-			? (keyof TOOLS)[]
+			? MagmaMiddlewareAppliesTo<TOOL_NAME>
 			: never;
 	critical?: boolean;
 	maxRetries?: number;
 	order?: number;
 };
 
+export type MagmaMiddlewareVariants<STATE, TOOLS extends Record<string, unknown>> = {
+	[TRIGGER in MagmaMiddlewareTriggerType]: MagmaMiddleware<
+		STATE,
+		MagmaMiddlewareToolKey<TOOLS>,
+		TRIGGER
+	>;
+}[MagmaMiddlewareTriggerType];
+
 export type MagmaMiddlewareSet<
 	STATE = Record<string, unknown>,
-	TOOLS extends MagmaToolSet<STATE> = MagmaToolSet<STATE>
-> = Record<string, MagmaMiddleware<STATE, TOOLS>>;
+	TOOLS extends Record<string, unknown> = MagmaToolSet<STATE>
+> = Record<string, MagmaMiddleware<STATE, MagmaMiddlewareToolKey<TOOLS>>>;
 
 export const magmaMiddleware = <
 	STATE,
-	TOOLS extends MagmaToolSet<STATE>,
-	TRIGGER extends MagmaMiddlewareTriggerType
+	const TOOL_NAME extends string,
+	const TRIGGER extends MagmaMiddlewareTriggerType
 >(
-	middleware: MagmaMiddleware<STATE, TOOLS, TRIGGER>
-) => middleware as MagmaMiddleware<STATE, TOOLS, TRIGGER>;
+	middleware: MagmaMiddleware<STATE, TOOL_NAME, TRIGGER>
+) => middleware as MagmaMiddleware<STATE, TOOL_NAME, TRIGGER>;
+
+export const magmaMiddlewareSet = <STATE, TOOLS extends MagmaToolSet<STATE> = MagmaToolSet<STATE>>(
+	middlewareSet: Record<string, MagmaMiddlewareVariants<STATE, TOOLS>>
+) => middlewareSet as MagmaMiddlewareSet<STATE, TOOLS>;

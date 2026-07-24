@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Tool, ToolExecutionOptions } from "ai";
+import { MagmaAgent } from "../agent";
 
 export type MagmaToolCallOptions<STATE> = ToolExecutionOptions & MagmaToolInfo<STATE>;
 export type MagmaToolInfo<STATE> = {
-	agent: {
-		state: STATE;
-		log: (message: string) => void;
-	};
+	agent: MagmaAgent<STATE>;
 	ctx: Record<string, unknown>;
 };
 type MagmaToolExecuteFunction<STATE, INPUT, OUTPUT> = (

@@ -5,8 +5,7 @@ export const MagmaMiddlewareTriggers = [
 	"onCompletion",
 	"preCompletion",
 	"onToolExecution",
-	"preToolExecution",
-	"onMainFinish"
+	"preToolExecution"
 ] as const;
 
 export type MagmaMiddlewareTriggerType = (typeof MagmaMiddlewareTriggers)[number];
@@ -20,9 +19,7 @@ export type MagmaMiddlewareParamType<TRIGGER extends MagmaMiddlewareTriggerType>
 				? string
 				: TRIGGER extends "onCompletion"
 					? string
-					: TRIGGER extends "onMainFinish"
-						? string
-						: never;
+					: never;
 
 export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType> =
 	TRIGGER extends "preCompletion"
@@ -33,9 +30,7 @@ export type MagmaMiddlewareReturnType<TRIGGER extends MagmaMiddlewareTriggerType
 				? void
 				: TRIGGER extends "onToolExecution"
 					? void
-					: TRIGGER extends "onMainFinish"
-						? string | void
-						: never;
+					: never;
 
 export type MagmaMiddlewareInfo<STATE> = MagmaToolInfo<STATE>;
 type MagmaMiddlewareToolKey<TOOLS> = Extract<keyof TOOLS, string>;

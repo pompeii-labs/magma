@@ -88,8 +88,9 @@ describe("MagmaAgent", () => {
 		});
 	});
 
-	describe("main", () => {
-		test("returns assistant message for simple text response", async () => {
+	describe("run", () => {
+		test("emits assistant message for simple text response", async () => {
+			const events: unknown[] = [];
 			const agent = new MagmaAgent({
 				llmConfig: {
 					model: new MockLanguageModelV3({
@@ -100,22 +101,21 @@ describe("MagmaAgent", () => {
 						})
 					})
 				},
-				state: {}
-			});
-
-			const result = await agent.main({
-				userMessage: {
-					role: "user",
-					content: "Hi"
+				state: {},
+				onMessage: async (message) => {
+					events.push(message);
 				}
 			});
 
-			expect(result).not.toBeNull();
-			expect(result?.role).toBe("assistant");
-			expect(Array.isArray(result?.content)).toBe(true);
-			const textPart = (result?.content as Array<{ type: string; text?: string }>).find(
-				(p) => p.type === "text"
-			);
+			await agent.run("Hi");
+
+			expect(events).toHaveLength(1);
+			const event = events[0] as {
+				role: string;
+				content: Array<{ type: string; text?: string }>;
+			};
+			expect(event.role).toBe("assistant");
+			const textPart = event.content.find((p) => p.type === "text");
 			expect(textPart?.text).toBe("Hello, world!");
 		});
 
@@ -133,16 +133,44 @@ describe("MagmaAgent", () => {
 				state: {}
 			});
 
-			await agent.main({
-				userMessage: {
-					role: "user",
-					content: "Test message"
-				}
-			});
+			await agent.run("Test message");
 
 			expect(agent.messages.length).toBe(2);
 			expect(agent.messages[0].role).toBe("user");
 			expect(agent.messages[1].role).toBe("assistant");
+		});
+
+		test("accepts structured user content", async () => {
+			const content = [
+				{
+					type: "text" as const,
+					text: "Structured input",
+					providerOptions: {
+						anthropic: {
+							cacheControl: { type: "ephemeral" }
+						}
+					}
+				}
+			];
+			const agent = new MagmaAgent({
+				llmConfig: {
+					model: new MockLanguageModelV3({
+						doStream: async () => ({
+							stream: simulateReadableStream({
+								chunks: createTextStreamParts("Response")
+							})
+						})
+					})
+				},
+				state: {}
+			});
+
+			await agent.run(content);
+
+			expect(agent.messages[0]).toEqual({
+				role: "user",
+				content
+			});
 		});
 
 		test("calls onStreamChunk callback", async () => {
@@ -157,18 +185,13 @@ describe("MagmaAgent", () => {
 						})
 					})
 				},
-				state: {}
-			});
-
-			await agent.main({
-				userMessage: {
-					role: "user",
-					content: "Stream test"
-				},
+				state: {},
 				onStreamChunk: (chunk) => {
 					chunks.push(chunk);
 				}
 			});
+
+			await agent.run("Stream test");
 
 			expect(chunks.length).toBeGreaterThan(0);
 		});
@@ -191,47 +214,69 @@ describe("MagmaAgent", () => {
 				}
 			});
 
-			await agent.main({
-				userMessage: {
-					role: "user",
-					content: "Test"
-				}
-			});
+			await agent.run("Test");
 
 			expect(capturedUsage).not.toBeNull();
 		});
 	});
 
 	describe("kill", () => {
-		test("aborts running requests", async () => {
-			const agent = new MagmaAgent({
-				llmConfig: {
-					model: new MockLanguageModelV3({
-						doStream: async () => ({
-							stream: simulateReadableStream({
-								chunks: createTextStreamParts("Delayed"),
-								initialDelayInMs: 1000
+		test("aborts running requests without unhandled AI SDK rejections", async () => {
+			const unhandledRejections: unknown[] = [];
+			const onUnhandledRejection = (reason: unknown) => {
+				unhandledRejections.push(reason);
+			};
+			const caughtTicketErrors: unknown[] = [];
+			process.on("unhandledRejection", onUnhandledRejection);
+
+			try {
+				let killed = false;
+				let historyAfterKill: unknown[] = [];
+				const agent = new MagmaAgent({
+					llmConfig: {
+						model: new MockLanguageModelV3({
+							doStream: async () => ({
+								stream: simulateReadableStream({
+									chunks: createTextStreamParts("Delayed"),
+									initialDelayInMs: 20,
+									chunkDelayInMs: 10
+								})
 							})
 						})
-					})
-				},
-				state: {}
-			});
+					},
+					state: {},
+					onStreamChunk: () => {
+						if (killed) return;
+						killed = true;
+						agent.kill();
+						historyAfterKill = [...agent.messages];
+					}
+				});
 
-			const promise = agent.main({
-				userMessage: {
-					role: "user",
-					content: "Test"
-				}
-			});
+				const firstPromise = agent.run("Test").catch((error) => {
+					caughtTicketErrors.push(error);
+				});
+				const steeringPromise = agent.run("Steer").catch((error) => {
+					caughtTicketErrors.push(error);
+				});
 
-			expect(agent.processing).toBe(true);
+				await Promise.all([firstPromise, steeringPromise]);
+				await new Promise((resolve) => setTimeout(resolve, 20));
 
-			agent.kill();
-
-			const result = await promise;
-			expect(result).toBeNull();
-			expect(agent.processing).toBe(false);
+				expect(killed).toBe(true);
+				expect(agent.processing).toBe(false);
+				expect(historyAfterKill).toEqual([]);
+				expect(agent.messages).toEqual([]);
+				expect(
+					caughtTicketErrors.every(
+						(error) => error instanceof Error && error.name === "AbortError"
+					)
+				).toBe(true);
+				expect(caughtTicketErrors).toHaveLength(2);
+				expect(unhandledRejections).toEqual([]);
+			} finally {
+				process.off("unhandledRejection", onUnhandledRejection);
+			}
 		});
 	});
 
@@ -310,12 +355,7 @@ describe("MagmaAgent", () => {
 				}
 			});
 
-			await agent.main({
-				userMessage: {
-					role: "user",
-					content: "Test"
-				}
-			});
+			await agent.run("Test");
 
 			expect(capturedInfo).not.toBeNull();
 			expect((capturedInfo as { agent: typeof agent }).agent).toBe(agent);

@@ -34,13 +34,17 @@ const agent = new MagmaAgent({
 		model: anthropic("claude-sonnet-4-20250514")
 	},
 	state: {},
+	onMessage: async (message) => {
+		console.log(message);
+	},
 	getSystemPrompts: () => [{ role: "system", content: "You are a helpful assistant." }]
 });
 
-const response = await agent.main({
-	userMessage: { role: "user", content: "Hello!" }
-});
+await agent.run("Hello!");
 ```
+
+`run()` accepts either a string or structured user content containing text, image, and file
+parts.
 
 ## Tools
 
@@ -52,7 +56,8 @@ import { z } from "zod";
 const agent = new MagmaAgent(
 	{
 		llmConfig: { model: anthropic("claude-sonnet-4-20250514") },
-		state: { count: 0 }
+		state: { count: 0 },
+		onMessage: async (message) => console.log(message)
 	},
 	{
 		increment: {
@@ -79,13 +84,13 @@ Middleware lets you intercept and modify the agent's behavior at different point
 | `onCompletion`     | Assistant message | Triggers regeneration      | string (optional, replaces text) |
 | `preToolExecution` | Tool calls        | Triggers regeneration      | void                             |
 | `onToolExecution`  | Tool results      | Replaces output with error | void                             |
-| `onMainFinish`     | Final response    | Triggers regeneration      | string (optional, replaces text) |
 
 ```ts
 const agent = new MagmaAgent(
 	{
 		llmConfig: { model: anthropic("claude-sonnet-4-20250514") },
-		state: {}
+		state: {},
+		onMessage: async (message) => console.log(message)
 	},
 	{}, // tools
 	{
@@ -122,7 +127,8 @@ const agent = new MagmaAgent({
 	state: {
 		userId: "123",
 		preferences: { theme: "dark" }
-	}
+	},
+	onMessage: async (message) => console.log(message)
 });
 
 // In tools/middleware: info.agent.state.userId
@@ -150,6 +156,9 @@ const agent = new MagmaAgent({
 	messageContext: 20,
 
 	// Callbacks
+	onMessage: async (message) => console.log(message),
+	onStreamChunk: (chunk, info) => process.stdout.write(chunk.text || ""),
+	onTrace: (trace, info) => console.log("Trace:", trace),
 	onUsageUpdate: (usage, info) => console.log(usage),
 	onError: (error) => console.error(error),
 
@@ -158,44 +167,48 @@ const agent = new MagmaAgent({
 });
 ```
 
-## Trigger Mode
+## Steering
 
-Force the agent to call a specific tool and return its result:
-
-```ts
-const result = await agent.main({
-	userMessage: { role: "user", content: "Get the weather" },
-	trigger: "getWeather"
-});
-```
+Calling `run()` while the agent is processing queues the new message. Queued messages are
+inserted in order after the next tool result or terminal assistant completion. Each promise
+resolves after its message contributes to a terminal response.
 
 ## Streaming
 
+Configure streaming on the agent:
+
 ```ts
-await agent.main({
-	userMessage: { role: "user", content: "Hello!" },
+const agent = new MagmaAgent({
+	// ...
 	onStreamChunk: (chunk, info) => {
 		process.stdout.write(chunk.text || "");
 	}
 });
+
+await agent.run("Hello!");
 ```
 
 ## Tracing
 
 ```ts
-await agent.main({
-	userMessage: { role: "user", content: "Hello!" },
+const agent = new MagmaAgent({
+	// ...
 	onTrace: (trace) => {
 		console.log("Trace:", trace);
 	}
 });
+
+await agent.run("Hello!");
 ```
 
 ## Aborting
 
 ```ts
-// Stop all running requests
+// Stop the active turn and reject active and queued run() promises
 agent.kill();
+
+// Uncommitted user and steering messages are removed from agent.messages.
+// Completed tool-call/tool-result exchanges remain in history.
 
 // Check if agent is processing
 if (agent.processing) {
@@ -272,7 +285,8 @@ const agent = createTrackedAgent(
 	"MyAgent",
 	{
 		llmConfig: { model: anthropic("claude-sonnet-4-20250514") },
-		state: { count: 0 }
+		state: { count: 0 },
+		onMessage: async (message) => console.log(message)
 	},
 	{
 		increment: {
@@ -289,7 +303,7 @@ const agent = createTrackedAgent(
 );
 
 // ✅ All agent methods available
-await agent.main({ userMessage: { role: "user", content: "Increment by 5" } });
+await agent.run("Increment by 5");
 
 // ✅ Extended methods available
 agent.setContext({ orgId: "123" });

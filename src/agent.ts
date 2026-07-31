@@ -4,18 +4,16 @@ import {
 	LanguageModel,
 	ModelMessage,
 	streamText,
-	ToolModelMessage,
 	ToolSet,
 	UserModelMessage
 } from "ai";
 import {
-	MagmaAssistantMessage,
 	MagmaInfo,
+	MagmaMessageHandler,
 	MagmaMiddlewareSet,
 	MagmaStreamChunk,
 	MagmaSystemMessage,
 	MagmaToolInfo,
-	MagmaToolResultMessage,
 	MagmaToolSet,
 	MagmaUsage,
 	MagmaUserMessage,
@@ -27,7 +25,6 @@ import { runOnCompletionMiddleware } from "./middleware/onCompletion";
 import { runPreToolExecutionMiddleware } from "./middleware/preToolExecution";
 import { executeTools } from "./tools/execute";
 import { runOnToolExecutionMiddleware } from "./middleware/onToolExecution";
-import { runOnMainFinishMiddleware } from "./middleware/onMainFinish";
 
 type CallSettings = Omit<AICallSettings, "abortSignal">;
 
@@ -38,6 +35,12 @@ function isAbortError(error: unknown): boolean {
 		"name" in error &&
 		error.name === "AbortError"
 	);
+}
+
+function createAbortError(): Error {
+	const error = new Error("Agent request aborted");
+	error.name = "AbortError";
+	return error;
 }
 
 export type MagmaLLMConfig = {
@@ -53,12 +56,35 @@ export type MagmaAgentProps<STATE, TOOLS extends MagmaToolSet<STATE>> = {
 	getSystemPrompts?: (info: MagmaInfo<STATE, TOOLS>) => MagmaSystemMessage[];
 	tools?: TOOLS;
 	middleware?: MagmaMiddlewareSet<STATE, TOOLS>;
+	onMessage: MagmaMessageHandler<STATE, TOOLS>;
+	onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
+	onTrace?: (trace: TraceEvent[], info: MagmaInfo<STATE, TOOLS>) => void;
 
 	messageContext?: number;
 	onUsageUpdate?: (usage: MagmaUsage, info: MagmaInfo<STATE, TOOLS>) => void;
 	onError?: (error: Error) => void;
 
 	verbose?: boolean;
+};
+
+type RunTicket = {
+	content: MagmaUserMessage["content"];
+	promise: Promise<void>;
+	resolve: () => void;
+	reject: (error: unknown) => void;
+	settled: boolean;
+};
+
+type TurnState<STATE, TOOLS extends MagmaToolSet<STATE>> = {
+	ctx: Record<string, unknown>;
+	epoch: number;
+	historyCheckpoint: number;
+	info: MagmaInfo<STATE, TOOLS>;
+	middlewareRetries: Record<string, number>;
+	requestId: string;
+	tickets: RunTicket[];
+	trace: TraceEvent[];
+	traceEmitted: boolean;
 };
 
 export class MagmaAgent<
@@ -70,6 +96,9 @@ export class MagmaAgent<
 	getSystemPrompts: (info: MagmaInfo<STATE, TOOLS>) => MagmaSystemMessage[] = () => [];
 	tools: TOOLS;
 	middleware: MagmaMiddlewareSet<STATE, TOOLS>;
+	onMessage: MagmaMessageHandler<STATE, TOOLS>;
+	onStreamChunk: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
+	onTrace: (trace: TraceEvent[], info: MagmaInfo<STATE, TOOLS>) => void;
 
 	messageContext: number;
 	onUsageUpdate: (usage: MagmaUsage, info: MagmaInfo<STATE, TOOLS>) => void;
@@ -79,7 +108,12 @@ export class MagmaAgent<
 
 	messages: ModelMessage[];
 
-	private abortControllers: Map<string, AbortController>;
+	private activeAbortController: AbortController | null = null;
+	private activeHistoryCheckpoint: number | null = null;
+	private activeTickets: RunTicket[] = [];
+	private processingLoop: Promise<void> | null = null;
+	private runEpoch = 0;
+	private steeringQueue: RunTicket[] = [];
 
 	constructor(
 		props: Omit<MagmaAgentProps<STATE, TOOLS>, "tools" | "middleware">,
@@ -91,6 +125,9 @@ export class MagmaAgent<
 
 		this.tools = (tools ?? {}) as TOOLS;
 		this.middleware = (middleware ?? {}) as MagmaMiddlewareSet<STATE, TOOLS>;
+		this.onMessage = props.onMessage ?? (async () => {});
+		this.onStreamChunk = props.onStreamChunk ?? (() => {});
+		this.onTrace = props.onTrace ?? (() => {});
 
 		this.messageContext = props.messageContext ?? -1;
 		this.onUsageUpdate = props.onUsageUpdate ?? (() => {});
@@ -103,10 +140,7 @@ export class MagmaAgent<
 			});
 
 		this.verbose = props.verbose;
-
 		this.messages = [];
-
-		this.abortControllers = new Map();
 
 		this.log("Agent initialized");
 	}
@@ -117,548 +151,405 @@ export class MagmaAgent<
 		}
 	}
 
-	public async main(args: {
-		config?: {
-			general?: CallSettings;
+	public run(content: MagmaUserMessage["content"]): Promise<void> {
+		let resolvePromise!: () => void;
+		let rejectPromise!: (error: unknown) => void;
+		const promise = new Promise<void>((resolve, reject) => {
+			resolvePromise = resolve;
+			rejectPromise = reject;
+		});
+		const ticket: RunTicket = {
+			content,
+			promise,
+			resolve: resolvePromise,
+			reject: rejectPromise,
+			settled: false
 		};
-		userMessage: MagmaUserMessage;
-		onTrace?: (trace: TraceEvent[]) => void;
-		trigger?: undefined;
-		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
-	}): Promise<MagmaAssistantMessage | null>;
 
-	public async main(args: {
-		config?: {
-			general?: CallSettings;
-		};
-		userMessage: MagmaUserMessage;
-		onTrace?: (trace: TraceEvent[]) => void;
-		trigger: keyof TOOLS;
-		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
-	}): Promise<MagmaToolResultMessage | null>;
+		this.steeringQueue.push(ticket);
+		this.startProcessing();
 
-	public async main(args: {
-		config?: {
-			general?: CallSettings;
-		};
-		userMessage: MagmaUserMessage;
-		onTrace?: (trace: TraceEvent[]) => void;
-		trigger?: keyof TOOLS;
-		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
-	}): Promise<MagmaAssistantMessage | MagmaToolResultMessage | null> {
-		return (await this._main({
-			config: args.config,
-			userOrToolMessage: args.userMessage,
-			onTrace: args.onTrace,
-			trigger: args.trigger,
-			// ctx: args.ctx,
-			onStreamChunk: args.onStreamChunk
-		})) as MagmaToolResultMessage | null;
+		return ticket.promise;
 	}
 
-	private async _main(args: {
-		config?: {
-			general?: CallSettings;
-		};
-		userOrToolMessage: UserModelMessage | ToolModelMessage;
-		trigger?: keyof TOOLS;
-		originIndex?: number;
-		messages?: Array<ModelMessage>;
-		trace?: TraceEvent[];
-		onTrace?: (trace: TraceEvent[]) => void;
-		onStreamChunk?: (chunk: MagmaStreamChunk, info: MagmaInfo<STATE, TOOLS>) => void;
-		middlewareRetries?: Record<string, number>;
-	}): Promise<AssistantModelMessage | MagmaToolResultMessage | null> {
-		const {
-			config,
-			trace = [],
-			onTrace,
-			userOrToolMessage,
-			trigger,
-			onStreamChunk = () => {},
-			middlewareRetries = {}
-		} = args;
-		const info: MagmaInfo<STATE, TOOLS> = {
-			agent: this,
-			ctx: {}
-		};
-		let originIndex = args.originIndex;
-		const localMessages = [
-			...(args?.messages ?? this.messages.filter((m) => m.role !== "system"))
-		];
+	private startProcessing(): void {
+		if (this.processingLoop) return;
 
-		const requestId = Math.random().toString(36).substring(2, 15);
-		try {
-			// this promise will resolve when either main finishes or the abort controller is aborted
-			const mainPromise = new Promise<AssistantModelMessage | ToolModelMessage | null>(
-				// eslint-disable-next-line no-async-promise-executor
-				async (resolve, reject) => {
-					let hasSettled = false;
-					const resolveOnce = (
-						value: AssistantModelMessage | ToolModelMessage | null
-					): void => {
-						if (hasSettled) return;
-						hasSettled = true;
-						resolve(value);
-					};
-					const resolveNullOnce = (message?: string): void => {
-						if (!hasSettled && message) {
-							this.log(message);
-						}
-						resolveOnce(null);
-					};
-					const rejectOnce = (error: unknown): void => {
-						if (hasSettled) return;
-						hasSettled = true;
-						reject(error);
-					};
-
-					try {
-						const abortController = new AbortController();
-						this.abortControllers.set(requestId, abortController);
-						abortController.signal.onabort = () => {
-							this.abortControllers.delete(requestId);
-							return resolveNullOnce(
-								`Abort signal received for request ${requestId}`
-							);
-						};
-
-						// Save the index of the newest user message
-						const userOrToolMessageIndex: number = localMessages.length;
-						if (originIndex === undefined) originIndex = userOrToolMessageIndex;
-						localMessages.push(userOrToolMessage);
-
-						// Run the preCompletion middleware
-						let preCompletionMiddlewareResult: UserModelMessage | ToolModelMessage;
-
-						if (userOrToolMessage.role === "user") {
-							// user message, so we run preCompletion middleware
-							try {
-								preCompletionMiddlewareResult = await runPreCompletionMiddleware({
-									info,
-									middleware: this.middleware,
-									message: userOrToolMessage as UserModelMessage,
-									trace,
-									requestId
-								});
-							} catch (error) {
-								// If the preCompletion middleware fails, we should remove the last message
-								localMessages.pop();
-
-								// Return the error message as a tool result if we are in trigger mode
-								if (trigger !== undefined) {
-									this.log(
-										"Resolving error message as tool call due to trigger being specified"
-									);
-									return resolveOnce({
-										role: "tool",
-										content: [
-											{
-												type: "tool-result",
-												toolCallId: "N/A",
-												toolName: "N/A",
-												output: {
-													type: "error-text",
-													value: parseErrorToString(error)
-												}
-											}
-										]
-									});
-								}
-
-								// Return the error message as the assistant message if we are not in trigger mode
-								this.log("Resolving error message as assistant message");
-								return resolveOnce({
-									role: "assistant",
-									content: parseErrorToString(error)
-								});
-							}
-						} else {
-							// tool result message, so we don't need to run preCompletion middleware
-							preCompletionMiddlewareResult = userOrToolMessage as ToolModelMessage;
-						}
-
-						// Update the last user message with the result of the preCompletion middleware
-						localMessages[userOrToolMessageIndex] = preCompletionMiddlewareResult;
-
-						// Determine the config to be used for this request
-						const configToUse = config ?? this.llmConfig;
-
-						// based on the slice, these are the message we should use for the completion
-						const completionMessages =
-							this.messageContext === -1
-								? localMessages
-								: localMessages.slice(-this.messageContext);
-
-						const toolsArray = Object.entries(this.tools);
-						let enabledToolsArray = toolsArray.filter(([_, tool]) => {
-							const enabled =
-								"enabled" in tool
-									? (tool.enabled as
-											| ((info: MagmaToolInfo<STATE>) => boolean)
-											| undefined)
-									: undefined;
-
-							return enabled ? enabled(info) : true;
-						});
-
-						if (trigger !== undefined) {
-							enabledToolsArray = enabledToolsArray.filter(
-								([name]) => name === trigger
-							);
-
-							if (enabledToolsArray.length === 0) {
-								this.log(
-									`No enabled tool matched "${trigger.toString()}", resolving null`
-								);
-								return resolveNullOnce();
-							}
-						}
-
-						const finalToolsArray = enabledToolsArray.map(([name, tool]) => [
-							name,
-							{ ...tool, execute: undefined, enabled: undefined }
-						]);
-
-						const tools = Object.fromEntries(finalToolsArray) as ToolSet;
-
-						// Ensure the request is still active before creating a stream.
-						const activeAbortController = this.abortControllers.get(requestId);
-						if (!activeAbortController) {
-							return resolveNullOnce(
-								`No matching abort controller found for ${requestId} before streamText call, resolving null`
-							);
-						}
-
-						// get the completion
-						// we will always use a stream, and only use the onStreamChunk callback if stream mode is active
-						const { fullStream, content, totalUsage } = streamText({
-							model: this.llmConfig.model,
-							tools: tools,
-							system: this.getSystemPrompts(info),
-							messages: completionMessages,
-							...configToUse.general,
-							abortSignal: activeAbortController.signal
-						});
-						const contentResult = Promise.resolve(content).catch((error: unknown) => {
-							if (isAbortError(error) || !this.abortControllers.has(requestId)) {
-								return null;
-							}
-
-							throw error;
-						});
-						const totalUsageResult = Promise.resolve(totalUsage).catch(
-							(error: unknown) => {
-								if (isAbortError(error) || !this.abortControllers.has(requestId)) {
-									return null;
-								}
-
-								throw error;
-							}
-						);
-
-						let completion: AssistantModelMessage;
-						try {
-							for await (const chunk of fullStream) {
-								onStreamChunk(chunk as MagmaStreamChunk, info);
-							}
-
-							if (!this.abortControllers.has(requestId)) {
-								return resolveNullOnce(
-									`No matching abort controller found for ${requestId} after stream, resolving null`
-								);
-							}
-
-							const completionContent = await contentResult;
-							if (completionContent === null) {
-								return resolveNullOnce(
-									`Request ${requestId} aborted before content resolved`
-								);
-							}
-
-							completion = {
-								role: "assistant",
-								content: completionContent
-							} as AssistantModelMessage;
-
-							const usage = await totalUsageResult;
-							if (usage === null) {
-								return resolveNullOnce(
-									`Request ${requestId} aborted before usage resolved`
-								);
-							}
-
-							// Call the onUsageUpdate callback
-							this.onUsageUpdate(usage, info);
-						} catch (error) {
-							if (isAbortError(error)) {
-								return resolveNullOnce(
-									`Request ${requestId} aborted, resolving null`
-								);
-							}
-
-							throw error;
-						}
-
-						// Add the completion message to the messages array
-						localMessages.push(completion);
-
-						// Run the onCompletion middleware
-						// this will only affect text content from the assistant
-						let onCompletionMiddlewareResult: AssistantModelMessage | null;
-						try {
-							onCompletionMiddlewareResult = await runOnCompletionMiddleware({
-								info,
-								middleware: this.middleware,
-								message: completion,
-								trace,
-								requestId,
-								middlewareRetries
-							});
-						} catch (error) {
-							// If the onCompletion middleware fails, we should remove the last message
-							// This is the failing assistant message
-							localMessages.pop();
-
-							// We should also remove the user message, as it will be re-added in the subsequent main call
-							localMessages.pop();
-
-							// Add the error message to the messages array
-							localMessages.push({
-								role: "system",
-								content: parseErrorToString(error)
-							});
-
-							// Trigger another completion with the error message as context
-							return resolveOnce(
-								await this._main({
-									config: configToUse,
-									messages: localMessages,
-									userOrToolMessage,
-									trigger,
-									originIndex,
-									trace,
-									middlewareRetries,
-									onTrace,
-									onStreamChunk
-								})
-							);
-						}
-
-						// If the onCompletion middleware returns null
-						// That means it failed to run a critical middleware in the specified number of retries
-						if (!onCompletionMiddlewareResult) {
-							throw new Error(
-								`Catastrophic error: failed critical onCompletion middleware maximum number of times`
-							);
-						}
-
-						// Update the last message with the result of the onCompletion middleware
-						localMessages[localMessages.length - 1] = onCompletionMiddlewareResult;
-
-						// If the onCompletion middleware returns a tool call, we should execute the tools
-
-						let onToolExecutionMiddlewareResult: ToolModelMessage | null;
-						if (
-							typeof onCompletionMiddlewareResult.content !== "string" &&
-							onCompletionMiddlewareResult.content.filter(
-								(c) => c.type === "tool-call"
-							).length > 0 &&
-							onCompletionMiddlewareResult.content.filter(
-								(c) => c.type === "tool-result"
-							).length === 0
-						) {
-							let preToolExecutionMiddlewareResult: AssistantModelMessage | null;
-							try {
-								preToolExecutionMiddlewareResult =
-									await runPreToolExecutionMiddleware({
-										info,
-										middleware: this.middleware,
-										message: onCompletionMiddlewareResult,
-										trace,
-										requestId,
-										middlewareRetries
-									});
-							} catch (error) {
-								// Remove the failing tool call message
-								localMessages.pop();
-
-								// Remove the user message, as it will be readded in the subsequent main call
-								localMessages.pop();
-
-								localMessages.push({
-									role: "system",
-									content: parseErrorToString(error)
-								});
-
-								return resolveOnce(
-									await this._main({
-										config: configToUse,
-										messages: localMessages,
-										userOrToolMessage,
-										trigger,
-										originIndex,
-										trace,
-										middlewareRetries,
-										onTrace,
-										onStreamChunk
-									})
-								);
-							}
-
-							if (!preToolExecutionMiddlewareResult) {
-								throw new Error(
-									`Catastrophic error: failed critical preToolExecution middleware maximum number of times`
-								);
-							}
-
-							// Update the last message with the result of the onCompletion middleware
-							localMessages[localMessages.length - 1] =
-								preToolExecutionMiddlewareResult;
-
-							// Execute the tools
-							const toolResultMessage = await executeTools({
-								info,
-								state: this.state,
-								message: preToolExecutionMiddlewareResult,
-								trace,
-								requestId
-							});
-
-							onToolExecutionMiddlewareResult = await runOnToolExecutionMiddleware({
-								info,
-								middleware: this.middleware,
-								message: toolResultMessage,
-								trace,
-								requestId
-							});
-
-							// If the abort controller is not active, return null
-							if (!this.abortControllers.has(requestId)) {
-								return resolveNullOnce(
-									`No matching abort controller found for ${requestId} after onToolExecutionMiddleware, resolving null`
-								);
-							}
-
-							// if we are in trigger mode, the resolve the tool result
-							if (trigger !== undefined) {
-								this.log(
-									`Resolving tool result due to trigger mode being specified`
-								);
-								return resolveOnce(onToolExecutionMiddlewareResult);
-							}
-
-							// Trigger another completion with the tool result because last message was a tool call and we are not in trigger mode
-							return resolveOnce(
-								await this._main({
-									config: configToUse,
-									messages: localMessages,
-									userOrToolMessage: onToolExecutionMiddlewareResult,
-									trigger,
-									originIndex,
-									trace,
-									middlewareRetries,
-									onTrace,
-									onStreamChunk
-								})
-							);
-						}
-
-						// If the onCompletion middleware does not return a tool call, we should run the onMainFinish middleware
-						let onMainFinishMiddlewareResult: AssistantModelMessage | null;
-						try {
-							onMainFinishMiddlewareResult = await runOnMainFinishMiddleware({
-								info,
-								middleware: this.middleware,
-								message: onCompletionMiddlewareResult,
-								trace,
-								requestId,
-								middlewareRetries
-							});
-						} catch (error) {
-							// If the onMainFinish middleware fails, we should remove the offending message
-							localMessages.pop();
-
-							// Also remove the message before as it will be re-added in the subsequent main call
-							localMessages.pop();
-
-							// Add the error message to the messages array
-							localMessages.push({
-								role: "system",
-								content: parseErrorToString(error)
-							});
-
-							return resolveOnce(
-								await this._main({
-									config: configToUse,
-									messages: localMessages,
-									userOrToolMessage,
-									trigger,
-									originIndex,
-									trace,
-									middlewareRetries,
-									onTrace,
-									onStreamChunk
-								})
-							);
-						}
-
-						if (!onMainFinishMiddlewareResult) {
-							throw new Error(
-								`Catastrophic error: failed critical onMainFinish middleware maximum number of times`
-							);
-						}
-
-						// We don't update the last message with the result of the onMainFinish middleware
-						// Returning from onMainFinish will update the main output, but not the message history
-
-						// Call trace callback if provided
-						if (onTrace) {
-							onTrace([...trace]);
-						}
-
-						// update the main agent message history
-						this.messages.push(...localMessages.slice(originIndex));
-
-						return resolveOnce(onMainFinishMiddlewareResult);
-					} catch (error) {
-						return rejectOnce(error);
-					}
-				}
-			);
-
-			return await mainPromise;
-		} catch (error) {
-			// Call trace callback even on error
-			if (onTrace) {
-				onTrace([...trace]);
+		const loop = this.processQueue();
+		this.processingLoop = loop;
+		void loop.then(
+			() => this.finishProcessing(loop),
+			(error) => {
+				this.log(`Processing loop failed: ${parseErrorToString(error)}`);
+				this.finishProcessing(loop);
 			}
+		);
+	}
 
-			try {
-				this.log(`Main loop failed: ${parseErrorToString(error)}`);
-				this.onError(parseErrorToError(error));
-				return null;
-			} catch {
-				throw error;
-			}
-		} finally {
-			this.abortControllers.delete(requestId);
+	private finishProcessing(loop: Promise<void>): void {
+		if (this.processingLoop !== loop) return;
+		this.processingLoop = null;
+		this.activeAbortController = null;
+		this.activeHistoryCheckpoint = null;
+
+		if (this.steeringQueue.length > 0) {
+			this.startProcessing();
 		}
 	}
 
-	/**
-	 * Stops the currently executing request.
-	 * @returns true if a request was killed, false otherwise
-	 */
-	public kill(): void {
-		this.abortControllers.forEach((controller) => controller.abort());
-		this.abortControllers.clear();
+	private async processQueue(): Promise<void> {
+		while (this.steeringQueue.length > 0) {
+			const ctx: Record<string, unknown> = {};
+			const turn: TurnState<STATE, TOOLS> = {
+				ctx,
+				epoch: this.runEpoch,
+				historyCheckpoint: this.messages.length,
+				info: {
+					agent: this,
+					ctx
+				},
+				middlewareRetries: {},
+				requestId: Math.random().toString(36).substring(2, 15),
+				tickets: [],
+				trace: [],
+				traceEmitted: false
+			};
+			this.activeHistoryCheckpoint = turn.historyCheckpoint;
+			this.activeTickets = turn.tickets;
+
+			try {
+				await this.incorporateSteering(turn);
+				this.ensureActive(turn.epoch);
+
+				if (turn.tickets.length > 0) {
+					await this.processTurn(turn);
+				} else {
+					this.emitTrace(turn);
+				}
+			} catch (error) {
+				this.rollbackHistory(turn);
+				if (!isAbortError(error)) {
+					let parsedError = parseErrorToError(error);
+					try {
+						this.emitTrace(turn);
+					} catch (traceError) {
+						parsedError = parseErrorToError(traceError);
+					}
+					this.log(`Main loop failed: ${parsedError.message}`);
+					try {
+						this.onError(parsedError);
+					} catch {
+						// Ticket rejection is the public error channel.
+					}
+					this.rejectTickets(turn.tickets, parsedError);
+				} else {
+					try {
+						this.emitTrace(turn);
+					} catch {
+						// Cancellation has already settled the affected tickets.
+					}
+				}
+			} finally {
+				if (this.activeTickets === turn.tickets) {
+					this.activeTickets = [];
+					this.activeHistoryCheckpoint = null;
+				}
+				this.activeAbortController = null;
+			}
+
+			if (turn.epoch !== this.runEpoch) return;
+		}
+	}
+
+	private async incorporateSteering(turn: TurnState<STATE, TOOLS>): Promise<void> {
+		while (this.steeringQueue.length > 0) {
+			const queuedTickets = this.steeringQueue.splice(0);
+
+			for (const ticket of queuedTickets) {
+				this.ensureActive(turn.epoch);
+				turn.tickets.push(ticket);
+
+				try {
+					const message = await runPreCompletionMiddleware({
+						info: turn.info,
+						middleware: this.middleware,
+						message: {
+							role: "user",
+							content: ticket.content
+						} as UserModelMessage,
+						trace: turn.trace,
+						requestId: turn.requestId
+					});
+					this.ensureActive(turn.epoch);
+
+					this.messages.push(message);
+				} catch (error) {
+					if (isAbortError(error) || turn.epoch !== this.runEpoch) {
+						throw createAbortError();
+					}
+					const ticketIndex = turn.tickets.indexOf(ticket);
+					if (ticketIndex !== -1) {
+						turn.tickets.splice(ticketIndex, 1);
+					}
+					const errorContent = parseErrorToString(error);
+					try {
+						await this.onMessage(
+							{
+								role: "assistant",
+								content: errorContent
+							},
+							turn.info
+						);
+						this.resolveTicket(ticket);
+					} catch (eventError) {
+						this.rejectTicket(ticket, eventError);
+					}
+				}
+			}
+		}
+	}
+
+	private async processTurn(turn: TurnState<STATE, TOOLS>): Promise<void> {
+		while (turn.tickets.length > 0) {
+			this.ensureActive(turn.epoch);
+			const completion = await this.generateCompletion(turn);
+			this.ensureActive(turn.epoch);
+			this.messages.push(completion);
+
+			let completedMessage: AssistantModelMessage | null;
+			try {
+				completedMessage = await runOnCompletionMiddleware({
+					info: turn.info,
+					middleware: this.middleware,
+					message: completion,
+					trace: turn.trace,
+					requestId: turn.requestId,
+					middlewareRetries: turn.middlewareRetries
+				});
+			} catch (error) {
+				this.messages.pop();
+				this.messages.push({
+					role: "system",
+					content: parseErrorToString(error)
+				});
+				continue;
+			}
+			if (!completedMessage) {
+				throw new Error(
+					"Catastrophic error: failed critical onCompletion middleware maximum number of times"
+				);
+			}
+			this.messages[this.messages.length - 1] = completedMessage;
+
+			if (this.hasToolCalls(completedMessage)) {
+				let toolCallMessage: AssistantModelMessage | null;
+				try {
+					toolCallMessage = await runPreToolExecutionMiddleware({
+						info: turn.info,
+						middleware: this.middleware,
+						message: completedMessage,
+						trace: turn.trace,
+						requestId: turn.requestId,
+						middlewareRetries: turn.middlewareRetries
+					});
+				} catch (error) {
+					this.messages.pop();
+					this.messages.push({
+						role: "system",
+						content: parseErrorToString(error)
+					});
+					continue;
+				}
+				if (!toolCallMessage) {
+					throw new Error(
+						"Catastrophic error: failed critical preToolExecution middleware maximum number of times"
+					);
+				}
+				this.messages[this.messages.length - 1] = toolCallMessage;
+
+				await this.onMessage(toolCallMessage, turn.info);
+				this.ensureActive(turn.epoch);
+
+				const toolResult = await executeTools({
+					info: turn.info,
+					state: this.state,
+					message: toolCallMessage,
+					trace: turn.trace,
+					requestId: turn.requestId
+				});
+				this.ensureActive(turn.epoch);
+
+				const processedToolResult = await runOnToolExecutionMiddleware({
+					info: turn.info,
+					middleware: this.middleware,
+					message: toolResult,
+					trace: turn.trace,
+					requestId: turn.requestId
+				});
+				this.ensureActive(turn.epoch);
+				this.messages.push(processedToolResult);
+				await this.onMessage(processedToolResult, turn.info);
+				this.ensureActive(turn.epoch);
+				this.commitHistory(turn);
+
+				await this.incorporateSteering(turn);
+				continue;
+			}
+
+			await this.onMessage(completedMessage, turn.info);
+			this.ensureActive(turn.epoch);
+			this.emitTrace(turn);
+			this.commitHistory(turn);
+			this.resolveTickets(turn.tickets);
+			turn.tickets.length = 0;
+		}
+	}
+
+	private async generateCompletion(
+		turn: TurnState<STATE, TOOLS>
+	): Promise<AssistantModelMessage> {
+		const completionMessages =
+			this.messageContext === -1 ? this.messages : this.messages.slice(-this.messageContext);
+		const enabledTools = Object.entries(this.tools)
+			.filter(([_, tool]) => {
+				const enabled =
+					"enabled" in tool
+						? (tool.enabled as
+								| ((info: MagmaToolInfo<STATE, TOOLS>) => boolean)
+								| undefined)
+						: undefined;
+				return enabled ? enabled(turn.info) : true;
+			})
+			.map(([name, tool]) => [name, { ...tool, execute: undefined, enabled: undefined }]);
+		const tools = Object.fromEntries(enabledTools) as ToolSet;
+		const abortController = new AbortController();
+		this.activeAbortController = abortController;
+
+		try {
+			const { fullStream, content, totalUsage } = streamText({
+				model: this.llmConfig.model,
+				tools,
+				system: this.getSystemPrompts(turn.info),
+				messages: completionMessages,
+				...this.llmConfig.general,
+				abortSignal: abortController.signal
+			});
+			const contentPromise = Promise.resolve(content);
+			const usagePromise = Promise.resolve(totalUsage);
+
+			// The stream can fail before these AI SDK promises are awaited. Attach handlers
+			// immediately so an abort does not produce additional unhandled rejections.
+			void contentPromise.catch(() => {});
+			void usagePromise.catch(() => {});
+
+			for await (const chunk of fullStream) {
+				this.ensureActive(turn.epoch);
+				this.onStreamChunk(chunk as MagmaStreamChunk, turn.info);
+			}
+
+			this.ensureActive(turn.epoch);
+			const completionContent = await contentPromise;
+			this.ensureActive(turn.epoch);
+			const usage = await usagePromise;
+			this.onUsageUpdate(usage, turn.info);
+
+			return {
+				role: "assistant",
+				content: completionContent
+			} as AssistantModelMessage;
+		} catch (error) {
+			if (
+				isAbortError(error) ||
+				abortController.signal.aborted ||
+				turn.epoch !== this.runEpoch
+			) {
+				throw createAbortError();
+			}
+			throw error;
+		} finally {
+			if (this.activeAbortController === abortController) {
+				this.activeAbortController = null;
+			}
+		}
+	}
+
+	private hasToolCalls(message: AssistantModelMessage): boolean {
+		if (typeof message.content === "string") return false;
+		const hasToolCall = message.content.some((part) => part.type === "tool-call");
+		const hasToolResult = message.content.some((part) => part.type === "tool-result");
+		return hasToolCall && !hasToolResult;
+	}
+
+	private ensureActive(epoch: number): void {
+		if (epoch !== this.runEpoch) {
+			throw createAbortError();
+		}
+	}
+
+	private resolveTickets(tickets: RunTicket[]): void {
+		for (const ticket of [...tickets]) {
+			this.resolveTicket(ticket);
+		}
+	}
+
+	private resolveTicket(ticket: RunTicket): void {
+		if (ticket.settled) return;
+		ticket.settled = true;
+		ticket.resolve();
+	}
+
+	private rejectTickets(tickets: RunTicket[], error: unknown): void {
+		for (const ticket of [...tickets]) {
+			this.rejectTicket(ticket, error);
+		}
+		tickets.length = 0;
+	}
+
+	private rejectTicket(ticket: RunTicket, error: unknown): void {
+		if (ticket.settled) return;
+		ticket.settled = true;
+		ticket.reject(error);
+	}
+
+	private emitTrace(turn: TurnState<STATE, TOOLS>): void {
+		if (turn.traceEmitted) return;
+		turn.traceEmitted = true;
+		this.onTrace([...turn.trace], turn.info);
+	}
+
+	private commitHistory(turn: TurnState<STATE, TOOLS>): void {
+		turn.historyCheckpoint = this.messages.length;
+		this.activeHistoryCheckpoint = turn.historyCheckpoint;
+	}
+
+	private rollbackHistory(turn: TurnState<STATE, TOOLS>): void {
+		this.messages.splice(turn.historyCheckpoint);
 	}
 
 	/**
-	 * Return whether the agent is currently processing a request
+	 * Stops the current turn and rejects all active and queued calls.
+	 */
+	public kill(): void {
+		this.runEpoch++;
+		this.activeAbortController?.abort();
+		this.activeAbortController = null;
+		if (this.activeHistoryCheckpoint !== null) {
+			this.messages.splice(this.activeHistoryCheckpoint);
+		}
+
+		const abortError = createAbortError();
+		this.rejectTickets(this.activeTickets, abortError);
+		const queuedTickets = this.steeringQueue.splice(0);
+		this.rejectTickets(queuedTickets, abortError);
+	}
+
+	/**
+	 * Return whether the agent is currently processing a request.
 	 */
 	public get processing(): boolean {
-		return this.abortControllers.size > 0;
+		return (
+			this.steeringQueue.some((ticket) => !ticket.settled) ||
+			this.activeTickets.some((ticket) => !ticket.settled)
+		);
 	}
 }

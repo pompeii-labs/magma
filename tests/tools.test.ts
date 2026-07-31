@@ -92,12 +92,9 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Greet the world" }
-			});
+			await agent.run("Greet the world");
 
 			expect(toolExecuted).toBe(true);
-			expect(result).not.toBeNull();
 		});
 
 		test("tool receives correct input", async () => {
@@ -145,9 +142,7 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Add 5 and 3" }
-			});
+			await agent.run("Add 5 and 3");
 
 			expect(receivedInput).toEqual({ a: 5, b: 3 });
 		});
@@ -193,9 +188,7 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Echo test" }
-			});
+			await agent.run("Echo test");
 
 			// Should have: user, assistant (tool call), tool result, assistant (final)
 			expect(agent.messages.length).toBe(4);
@@ -243,9 +236,7 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Get counter" }
-			});
+			await agent.run("Get counter");
 
 			expect(stateValue as number | null).toBe(42);
 		});
@@ -292,9 +283,7 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Increment by 10" }
-			});
+			await agent.run("Increment by 10");
 
 			expect(agent.state.counter).toBe(15);
 		});
@@ -345,16 +334,14 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Use the tool" }
-			});
+			await agent.run("Use the tool");
 
 			expect(toolCalled).toBe(true);
 		});
 	});
 
 	describe("context object", () => {
-		test("tool receives ctx object scoped to main loop", async () => {
+		test("tool receives ctx object scoped to run loop", async () => {
 			let ctxReceived: Record<string, unknown> | null = null;
 			let callCount = 0;
 
@@ -394,9 +381,7 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Check ctx" }
-			});
+			await agent.run("Check ctx");
 
 			expect(ctxReceived).not.toBeNull();
 			expect(typeof ctxReceived).toBe("object");
@@ -445,102 +430,14 @@ describe("Tool Execution", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Use failing tool" }
-			});
+			await agent.run("Use failing tool");
 
 			// Agent should continue and produce a response after the tool error
-			expect(result).not.toBeNull();
 			expect(agent.messages.length).toBe(4);
 
 			// The tool message should contain the error
 			const toolMessage = agent.messages[2];
 			expect(toolMessage.role).toBe("tool");
-		});
-	});
-
-	describe("trigger mode", () => {
-		test("trigger forces specific tool execution", async () => {
-			let specificToolCalled = false;
-
-			const agent = new MagmaAgent(
-				{
-					llmConfig: {
-						model: new MockLanguageModelV3({
-							doStream: async () => ({
-								stream: simulateReadableStream({
-									chunks: createToolCallStream("specificTool", "call-1", {
-										value: "triggered"
-									})
-								})
-							})
-						})
-					},
-					state: {}
-				},
-				{
-					specificTool: magmaTool({
-						description: "A specific tool",
-						inputSchema: z.object({
-							value: z.string()
-						}),
-						execute: async (input) => {
-							specificToolCalled = true;
-							return `Received: ${input.value}`;
-						}
-					}),
-					otherTool: magmaTool({
-						description: "Another tool",
-						inputSchema: z.object({}),
-						execute: async () => {
-							return "Other tool";
-						}
-					})
-				}
-			);
-
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Do something" },
-				trigger: "specificTool"
-			});
-
-			expect(specificToolCalled).toBe(true);
-			expect(result).not.toBeNull();
-		});
-
-		test("trigger returns tool result directly", async () => {
-			const agent = new MagmaAgent(
-				{
-					llmConfig: {
-						model: new MockLanguageModelV3({
-							doStream: async () => ({
-								stream: simulateReadableStream({
-									chunks: createToolCallStream("getData", "call-1", {})
-								})
-							})
-						})
-					},
-					state: {}
-				},
-				{
-					getData: magmaTool({
-						description: "Get data",
-						inputSchema: z.object({}),
-						execute: async () => {
-							return { data: "important", count: 42 };
-						}
-					})
-				}
-			);
-
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Get data" },
-				trigger: "getData"
-			});
-
-			// In trigger mode, messages shouldn't be added to history in the usual way
-			// and the result should be the tool output
-			expect(result).not.toBeNull();
 		});
 	});
 });

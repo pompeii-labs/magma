@@ -1,6 +1,8 @@
 import { expect, test, describe } from "bun:test";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
+import { z } from "zod";
 import { MagmaAgent } from "../src/agent";
+import { magmaTool } from "../src/types";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
 function createTextStream(text: string): LanguageModelV3StreamPart[] {
@@ -21,9 +23,30 @@ function createTextStream(text: string): LanguageModelV3StreamPart[] {
 	];
 }
 
+function createToolCallStream(toolName: string, toolCallId: string): LanguageModelV3StreamPart[] {
+	return [
+		{ type: "stream-start", warnings: [] },
+		{
+			type: "tool-call",
+			toolCallId,
+			toolName,
+			input: "{}"
+		} as LanguageModelV3StreamPart,
+		{
+			type: "finish",
+			finishReason: { unified: "tool-calls", raw: undefined },
+			usage: {
+				inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+				outputTokens: { total: 5, text: 5, reasoning: 0 }
+			}
+		}
+	];
+}
+
 describe("Agent Integration", () => {
 	describe("preCompletion middleware", () => {
 		test("error is returned as assistant message", async () => {
+			const events: unknown[] = [];
 			const agent = new MagmaAgent(
 				{
 					llmConfig: {
@@ -35,7 +58,10 @@ describe("Agent Integration", () => {
 							})
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async (message) => {
+						events.push(message);
+					}
 				},
 				{},
 				{
@@ -48,13 +74,9 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
-			expect(result).not.toBeNull();
-			expect(result?.role).toBe("assistant");
-			expect(result?.content).toBe("preCompletion failed");
+			expect(events).toEqual([{ role: "assistant", content: "preCompletion failed" }]);
 		});
 
 		test("messages not added to history on error", async () => {
@@ -82,9 +104,7 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(agent.messages.length).toBe(0);
 		});
@@ -123,12 +143,9 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(callCount).toBe(2);
-			expect(result).not.toBeNull();
 		});
 
 		test("non-critical middleware continues after max retries", async () => {
@@ -162,86 +179,7 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
-
-			expect(callCount).toBe(2);
-			expect(result).not.toBeNull();
-		});
-	});
-
-	describe("onMainFinish middleware", () => {
-		test("runs on text completions", async () => {
-			let onMainFinishRan = false;
-
-			const agent = new MagmaAgent(
-				{
-					llmConfig: {
-						model: new MockLanguageModelV3({
-							doStream: async () => ({
-								stream: simulateReadableStream({
-									chunks: createTextStream("Response")
-								})
-							})
-						})
-					},
-					state: {}
-				},
-				{},
-				{
-					trackFinish: {
-						trigger: "onMainFinish",
-						action: async () => {
-							onMainFinishRan = true;
-						}
-					}
-				}
-			);
-
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
-
-			expect(onMainFinishRan).toBe(true);
-		});
-
-		test("error triggers regeneration", async () => {
-			let callCount = 0;
-
-			const agent = new MagmaAgent(
-				{
-					llmConfig: {
-						model: new MockLanguageModelV3({
-							doStream: async () => {
-								callCount++;
-								const text = callCount === 1 ? "first" : "second";
-								return {
-									stream: simulateReadableStream({
-										chunks: createTextStream(text)
-									})
-								};
-							}
-						})
-					},
-					state: {}
-				},
-				{},
-				{
-					rejectFirst: {
-						trigger: "onMainFinish",
-						action: async (message) => {
-							if (message === "first") {
-								throw new Error("Rejected first");
-							}
-						}
-					}
-				}
-			);
-
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(callCount).toBe(2);
 		});
@@ -280,9 +218,7 @@ describe("Agent Integration", () => {
 				{ role: "assistant", content: "Response 3" }
 			];
 
-			await agent.main({
-				userMessage: { role: "user", content: "Message 4" }
-			});
+			await agent.run("Message 4");
 
 			expect(receivedMessageCount).toBe(2);
 		});
@@ -316,9 +252,7 @@ describe("Agent Integration", () => {
 				{ role: "assistant", content: "Response 2" }
 			];
 
-			await agent.main({
-				userMessage: { role: "user", content: "Message 3" }
-			});
+			await agent.run("Message 3");
 
 			// 4 existing + 1 new = 5
 			expect(receivedMessageCount).toBe(5);
@@ -339,9 +273,7 @@ describe("Agent Integration", () => {
 				getSystemPrompts: () => [{ role: "system", content: "System prompt" }]
 			});
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			const systemMessages = agent.messages.filter((m) => m.role === "system");
 			expect(systemMessages.length).toBe(0);
@@ -369,9 +301,7 @@ describe("Agent Integration", () => {
 				getSystemPrompts: () => [{ role: "system", content: "Test system prompt" }]
 			});
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(systemPromptIncluded).toBe(true);
 		});
@@ -394,9 +324,7 @@ describe("Agent Integration", () => {
 				}
 			});
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(receivedAgent).toBe(agent);
 			expect((receivedAgent as { state: { testValue: number } }).state.testValue).toBe(123);
@@ -421,9 +349,7 @@ describe("Agent Integration", () => {
 				}
 			});
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(usageReceived).toBe(true);
 		});
@@ -464,19 +390,23 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			const result = await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			let rejectedError: Error | null = null;
+			try {
+				await agent.run("Hello");
+			} catch (error) {
+				rejectedError = error as Error;
+			}
 
 			expect(onErrorCalled).toBe(true);
 			expect(errorReceived).not.toBeNull();
 			expect(errorReceived!.message).toContain("Catastrophic error");
-			expect(result).toBeNull();
+			expect(rejectedError?.message).toContain("Catastrophic error");
+			expect(agent.messages).toEqual([]);
 		});
 	});
 
-	describe("concurrent execution", () => {
-		test("multiple main calls can run concurrently", async () => {
+	describe("steering execution", () => {
+		test("multiple run calls share one completion", async () => {
 			let concurrentCalls = 0;
 			let maxConcurrent = 0;
 
@@ -500,12 +430,213 @@ describe("Agent Integration", () => {
 			});
 
 			await Promise.all([
-				agent.main({ userMessage: { role: "user", content: "Request 1" } }),
-				agent.main({ userMessage: { role: "user", content: "Request 2" } }),
-				agent.main({ userMessage: { role: "user", content: "Request 3" } })
+				agent.run("Request 1"),
+				agent.run("Request 2"),
+				agent.run("Request 3")
 			]);
 
-			expect(maxConcurrent).toBeGreaterThan(1);
+			expect(maxConcurrent).toBe(1);
+			expect(agent.messages.map((message) => message.role)).toEqual([
+				"user",
+				"user",
+				"user",
+				"assistant"
+			]);
+		});
+
+		test("steering during tool execution is inserted after the tool result", async () => {
+			let completionCount = 0;
+			let chunks = 0;
+			const emittedRoles: string[] = [];
+			let releaseTool!: () => void;
+			let signalToolStarted!: () => void;
+			const toolStarted = new Promise<void>((resolve) => {
+				signalToolStarted = resolve;
+			});
+			const toolReleased = new Promise<void>((resolve) => {
+				releaseTool = resolve;
+			});
+			const agent = new MagmaAgent(
+				{
+					llmConfig: {
+						model: new MockLanguageModelV3({
+							doStream: async () => {
+								completionCount++;
+								return {
+									stream: simulateReadableStream({
+										chunks:
+											completionCount === 1
+												? createToolCallStream("wait", "call-1")
+												: createTextStream("Done")
+									})
+								};
+							}
+						})
+					},
+					state: {},
+					onMessage: async (message) => {
+						emittedRoles.push(message.role);
+					},
+					onStreamChunk: () => {
+						chunks++;
+					}
+				},
+				{
+					wait: magmaTool({
+						description: "Wait for the test",
+						inputSchema: z.object({}),
+						execute: async () => {
+							signalToolStarted();
+							await toolReleased;
+							return "finished";
+						}
+					})
+				}
+			);
+
+			const first = agent.run("Start the tool");
+			await toolStarted;
+			const steering = agent.run("Use this new instruction");
+			releaseTool();
+
+			await Promise.all([first, steering]);
+
+			expect(agent.messages.map((message) => message.role)).toEqual([
+				"user",
+				"assistant",
+				"tool",
+				"user",
+				"assistant"
+			]);
+			expect(chunks).toBeGreaterThan(0);
+			expect(emittedRoles).toEqual(["assistant", "tool", "assistant"]);
+		});
+
+		test("kill preserves a completed tool exchange and removes trailing steering", async () => {
+			let completionCount = 0;
+			let killed = false;
+			let releaseTool!: () => void;
+			let signalToolStarted!: () => void;
+			const toolStarted = new Promise<void>((resolve) => {
+				signalToolStarted = resolve;
+			});
+			const toolReleased = new Promise<void>((resolve) => {
+				releaseTool = resolve;
+			});
+			const agent = new MagmaAgent(
+				{
+					llmConfig: {
+						model: new MockLanguageModelV3({
+							doStream: async () => {
+								completionCount++;
+								return {
+									stream: simulateReadableStream({
+										chunks:
+											completionCount === 1
+												? createToolCallStream("wait", "call-1")
+												: createTextStream("Done")
+									})
+								};
+							}
+						})
+					},
+					state: {},
+					onMessage: async () => {},
+					onStreamChunk: () => {
+						if (completionCount !== 2 || killed) return;
+						killed = true;
+						agent.kill();
+					}
+				},
+				{
+					wait: magmaTool({
+						description: "Wait for the test",
+						inputSchema: z.object({}),
+						execute: async () => {
+							signalToolStarted();
+							await toolReleased;
+							return "finished";
+						}
+					})
+				}
+			);
+
+			const first = agent.run("Start the tool").catch(() => {});
+			await toolStarted;
+			const steering = agent.run("Use this new instruction").catch(() => {});
+			releaseTool();
+
+			await Promise.all([first, steering]);
+
+			expect(killed).toBe(true);
+			expect(agent.messages.map((message) => message.role)).toEqual([
+				"user",
+				"assistant",
+				"tool"
+			]);
+		});
+
+		test("steering after a terminal completion belongs to the next turn", async () => {
+			let completionCount = 0;
+			let signalFirstStarted!: () => void;
+			let releaseSecond!: () => void;
+			let steeringSettled = false;
+			const firstStarted = new Promise<void>((resolve) => {
+				signalFirstStarted = resolve;
+			});
+			const secondReleased = new Promise<void>((resolve) => {
+				releaseSecond = resolve;
+			});
+			const events: unknown[] = [];
+			const agent = new MagmaAgent({
+				llmConfig: {
+					model: new MockLanguageModelV3({
+						doStream: async () => {
+							completionCount++;
+							if (completionCount === 1) {
+								signalFirstStarted();
+								return {
+									stream: simulateReadableStream({
+										chunks: createTextStream("First response"),
+										initialDelayInMs: 20
+									})
+								};
+							}
+							await secondReleased;
+							return {
+								stream: simulateReadableStream({
+									chunks: createTextStream("Second response")
+								})
+							};
+						}
+					})
+				},
+				state: {},
+				onMessage: async (message) => {
+					events.push(message);
+				}
+			});
+
+			const first = agent.run("First request");
+			await firstStarted;
+			const steering = agent.run("Steering request").then(() => {
+				steeringSettled = true;
+			});
+
+			await first;
+			expect(steeringSettled).toBe(false);
+			expect(events).toHaveLength(1);
+
+			releaseSecond();
+			await steering;
+
+			expect(events).toHaveLength(2);
+			expect(agent.messages.map((message) => message.role)).toEqual([
+				"user",
+				"assistant",
+				"user",
+				"assistant"
+			]);
 		});
 
 		test("processing is true during execution", async () => {
@@ -525,7 +656,7 @@ describe("Agent Integration", () => {
 				state: {}
 			});
 
-			const promise = agent.main({ userMessage: { role: "user", content: "Hello" } });
+			const promise = agent.run("Hello");
 
 			// Give it a moment to start
 			await new Promise((resolve) => setTimeout(resolve, 5));
@@ -551,9 +682,7 @@ describe("Agent Integration", () => {
 				state: {}
 			});
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" }
-			});
+			await agent.run("Hello");
 
 			expect(agent.messages.length).toBe(2);
 			expect(agent.messages[0].role).toBe("user");
@@ -572,9 +701,9 @@ describe("Agent Integration", () => {
 				state: {}
 			});
 
-			await agent.main({ userMessage: { role: "user", content: "First" } });
-			await agent.main({ userMessage: { role: "user", content: "Second" } });
-			await agent.main({ userMessage: { role: "user", content: "Third" } });
+			await agent.run("First");
+			await agent.run("Second");
+			await agent.run("Third");
 
 			expect(agent.messages.length).toBe(6);
 		});
@@ -592,15 +721,13 @@ describe("Agent Integration", () => {
 						})
 					})
 				},
-				state: {}
-			});
-
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" },
+				state: {},
 				onTrace: (trace) => {
 					traceReceived = trace;
 				}
 			});
+
+			await agent.run("Hello");
 
 			expect(Array.isArray(traceReceived)).toBe(true);
 		});
@@ -620,7 +747,10 @@ describe("Agent Integration", () => {
 						})
 					},
 					state: {},
-					onError: () => {} // Suppress error
+					onError: () => {}, // Suppress error
+					onTrace: () => {
+						traceCalled = true;
+					}
 				},
 				{},
 				{
@@ -635,12 +765,11 @@ describe("Agent Integration", () => {
 				}
 			);
 
-			await agent.main({
-				userMessage: { role: "user", content: "Hello" },
-				onTrace: () => {
-					traceCalled = true;
-				}
-			});
+			try {
+				await agent.run("Hello");
+			} catch {
+				// Critical middleware failures reject the call.
+			}
 
 			expect(traceCalled).toBe(true);
 		});

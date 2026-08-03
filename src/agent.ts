@@ -419,8 +419,7 @@ export class MagmaAgent<
 				const enabled =
 					"enabled" in tool
 						? (tool.enabled as
-								| ((info: MagmaToolInfo<STATE, TOOLS>) => boolean)
-								| undefined)
+								((info: MagmaToolInfo<STATE, TOOLS>) => boolean) | undefined)
 						: undefined;
 				return enabled ? enabled(turn.info) : true;
 			})

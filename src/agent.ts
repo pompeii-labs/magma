@@ -430,7 +430,11 @@ export class MagmaAgent<
 		this.activeAbortController = abortController;
 
 		try {
-			const { stream, content, totalUsage } = streamText({
+			const {
+				stream,
+				content,
+				usage: totalUsage
+			} = streamText({
 				model: this.llmConfig.model,
 				tools,
 				instructions: this.getSystemPrompts(turn.info),

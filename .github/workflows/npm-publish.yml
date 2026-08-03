@@ -4,85 +4,79 @@
 name: Deploy Magma to NPM
 
 on:
-  push:
-    branches:
-      - main
-      - release/*
+    push:
+        branches:
+            - main
+            - release/*
 
 jobs:
-  publish-npm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org/
-      - run: npm install
-      - run: npm run build --if-present
-      
-      # Get branch name
-      - name: Get branch name
-        id: branch-name
-        run: |
-          BRANCH=${GITHUB_REF#refs/heads/}
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-      
-      # For release/* branches, update version and publish with tag
-      - name: Update version for release branches
-        if: startsWith(github.ref, 'refs/heads/release/')
-        run: |
-          BRANCH="${{ steps.branch-name.outputs.branch }}"
-          BRANCH_SLUG=$(echo $BRANCH | sed 's/\//-/g')
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          NEW_VERSION="${CURRENT_VERSION}-${BRANCH_SLUG}.$(date +'%Y%m%d%H%M%S')"
-          npm version $NEW_VERSION --no-git-tag-version
-          echo "Publishing version: $NEW_VERSION with tag ${BRANCH_SLUG}"
-          npm publish --tag ${BRANCH_SLUG}
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
-      
-      # For main branch, publish normally
-      - name: Publish main branch
-        if: github.ref == 'refs/heads/main'
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
+    publish-npm:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  registry-url: https://registry.npmjs.org/
+            - run: npm install
+            - run: npm run build --if-present
 
-      - name: Successful Deployment Notification
-        if: success() && !contains(github.event.head_commit.message, '[no-notify]')
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "🚀 Successful Deployment of Magma Framework",
-                  "emoji": true
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Commit:*\n`${{ github.sha }}`"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Author:*\n${{ github.actor }}"
-                  }
-                ]
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Changes:*\n${{ github.event.head_commit.message }}"
-                  }
-                ]
-              }
-              ]
-            }' ${{ secrets.SLACK_WEBHOOK_URL }}
+            # Get branch name
+            - name: Get branch name
+              id: branch-name
+              run: |
+                  BRANCH=${GITHUB_REF#refs/heads/}
+                  echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+            # For release/* branches, update version and publish with tag
+            - name: Update version for release branches
+              if: startsWith(github.ref, 'refs/heads/release/')
+              run: |
+                  BRANCH="${{ steps.branch-name.outputs.branch }}"
+                  BRANCH_SLUG=$(echo $BRANCH | sed 's/\//-/g')
+                  CURRENT_VERSION=$(node -p "require('./package.json').version")
+                  NEW_VERSION="${CURRENT_VERSION}-${BRANCH_SLUG}.$(date +'%Y%m%d%H%M%S')"
+                  npm version $NEW_VERSION --no-git-tag-version
+                  echo "Publishing version: $NEW_VERSION with tag ${BRANCH_SLUG}"
+                  npm publish --tag ${BRANCH_SLUG}
+              env:
+                  NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
+
+            # For main branch, publish normally
+            - name: Publish main branch
+              if: github.ref == 'refs/heads/main'
+              run: npm publish
+              env:
+                  NODE_AUTH_TOKEN: ${{secrets.NPM_SECRET}}
+
+            - name: Notify Pompeii
+              if: success() && !contains(github.event.head_commit.message, '[no-notify]')
+              env:
+                  BRANCH_NAME: ${{ steps.branch-name.outputs.branch }}
+                  COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+              run: |
+                  SHORT_SHA="${GITHUB_SHA::7}"
+                  PACKAGE_VERSION=$(node -p "require('./package.json').version")
+                  NPM_TAG="latest"
+                  if [[ "$BRANCH_NAME" == release/* ]]; then
+                    NPM_TAG="${BRANCH_NAME//\//-}"
+                  fi
+                  TITLE="Successful Deployment of Magma Framework"
+                  BODY=$(cat <<EOF
+                  The \`@pompeii-labs/magma\` package was published to NPM.
+
+                  **Version:** \`$PACKAGE_VERSION\`
+                  **NPM tag:** \`$NPM_TAG\`
+                  **Branch:** \`$BRANCH_NAME\`
+                  **Commit:** [\`$SHORT_SHA\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)
+                  **Author:** \`$GITHUB_ACTOR\`
+
+                  **Changes**
+                  $COMMIT_MESSAGE
+
+                  [View workflow run](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
+                  EOF
+                  )
+                  curl -s -X POST "${{ secrets.POMPEII_WEBHOOK_URL }}" \
+                    -H "Content-Type: application/json" \
+                    -d "$(jq -n --arg title "$TITLE" --arg body "$BODY" '{title: $title, body: $body}')" || true

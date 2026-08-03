@@ -1,11 +1,13 @@
 import {
 	AssistantModelMessage,
-	CallSettings as AICallSettings,
 	LanguageModel,
 	ModelMessage,
 	streamText,
 	ToolSet,
-	UserModelMessage
+	UserModelMessage,
+	LanguageModelCallOptions,
+	RequestOptions,
+	Prompt
 } from "ai";
 import {
 	MagmaInfo,
@@ -26,7 +28,9 @@ import { runPreToolExecutionMiddleware } from "./middleware/preToolExecution";
 import { executeTools } from "./tools/execute";
 import { runOnToolExecutionMiddleware } from "./middleware/onToolExecution";
 
-type CallSettings = Omit<AICallSettings, "abortSignal">;
+type CallSettings = Omit<LanguageModelCallOptions, "abortSignal"> &
+	RequestOptions &
+	Pick<Prompt, "allowSystemInMessages">;
 
 function isAbortError(error: unknown): boolean {
 	return (
@@ -426,11 +430,12 @@ export class MagmaAgent<
 		this.activeAbortController = abortController;
 
 		try {
-			const { fullStream, content, totalUsage } = streamText({
+			const { stream, content, totalUsage } = streamText({
 				model: this.llmConfig.model,
 				tools,
-				system: this.getSystemPrompts(turn.info),
+				instructions: this.getSystemPrompts(turn.info),
 				messages: completionMessages,
+				allowSystemInMessages: true,
 				...this.llmConfig.general,
 				abortSignal: abortController.signal
 			});
@@ -442,7 +447,7 @@ export class MagmaAgent<
 			void contentPromise.catch(() => {});
 			void usagePromise.catch(() => {});
 
-			for await (const chunk of fullStream) {
+			for await (const chunk of stream) {
 				this.ensureActive(turn.epoch);
 				this.onStreamChunk(chunk as MagmaStreamChunk, turn.info);
 			}

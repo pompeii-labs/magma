@@ -12,7 +12,8 @@ import type { UserModelMessage, AssistantModelMessage, ToolModelMessage } from "
 function createMockInfo() {
 	const agent = new MagmaAgent({
 		llmConfig: { model: new MockLanguageModelV3({}) },
-		state: {}
+		state: {},
+		onMessage: async () => {}
 	});
 	return { agent, ctx: {} };
 }

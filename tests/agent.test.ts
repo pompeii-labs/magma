@@ -29,7 +29,8 @@ describe("MagmaAgent", () => {
 				llmConfig: {
 					model: new MockLanguageModelV3({})
 				},
-				state: { counter: 0 }
+				state: { counter: 0 },
+				onMessage: async () => {}
 			});
 
 			expect(agent.state).toEqual({ counter: 0 });
@@ -43,7 +44,8 @@ describe("MagmaAgent", () => {
 					llmConfig: {
 						model: new MockLanguageModelV3({})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					testTool: {
@@ -69,7 +71,8 @@ describe("MagmaAgent", () => {
 				llmConfig: {
 					model: new MockLanguageModelV3({})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			expect(agent.messageContext).toBe(-1);
@@ -81,6 +84,7 @@ describe("MagmaAgent", () => {
 					model: new MockLanguageModelV3({})
 				},
 				state: {},
+				onMessage: async () => {},
 				messageContext: 10
 			});
 
@@ -130,7 +134,8 @@ describe("MagmaAgent", () => {
 						})
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			await agent.run("Test message");
@@ -162,7 +167,8 @@ describe("MagmaAgent", () => {
 						})
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			await agent.run(content);
@@ -186,6 +192,7 @@ describe("MagmaAgent", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				onStreamChunk: (chunk) => {
 					chunks.push(chunk);
 				}
@@ -209,6 +216,7 @@ describe("MagmaAgent", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				onUsageUpdate: (usage) => {
 					capturedUsage = usage;
 				}
@@ -245,6 +253,7 @@ describe("MagmaAgent", () => {
 						})
 					},
 					state: {},
+					onMessage: async () => {},
 					onStreamChunk: () => {
 						if (killed) return;
 						killed = true;
@@ -286,7 +295,8 @@ describe("MagmaAgent", () => {
 				llmConfig: {
 					model: new MockLanguageModelV3({})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			expect(agent.processing).toBe(false);
@@ -304,6 +314,7 @@ describe("MagmaAgent", () => {
 					model: new MockLanguageModelV3({})
 				},
 				state: {},
+				onMessage: async () => {},
 				verbose: true
 			});
 
@@ -324,6 +335,7 @@ describe("MagmaAgent", () => {
 					model: new MockLanguageModelV3({})
 				},
 				state: {},
+				onMessage: async () => {},
 				verbose: false
 			});
 
@@ -349,6 +361,7 @@ describe("MagmaAgent", () => {
 					})
 				},
 				state: { testValue: 42 },
+				onMessage: async () => {},
 				getSystemPrompts: (info) => {
 					capturedInfo = info;
 					return [{ role: "system", content: "You are a helpful assistant." }];

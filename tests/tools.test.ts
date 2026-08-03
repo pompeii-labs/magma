@@ -76,7 +76,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					greet: magmaTool({
@@ -125,7 +126,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					add: magmaTool({
@@ -173,7 +175,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					echo: magmaTool({
@@ -222,7 +225,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: { counter: 42 }
+					state: { counter: 42 },
+					onMessage: async () => {}
 				},
 				{
 					getCounter: magmaTool<{ counter: number }, Record<string, never>>({
@@ -267,7 +271,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: { counter: 5 }
+					state: { counter: 5 },
+					onMessage: async () => {}
 				},
 				{
 					increment: magmaTool<{ counter: number }, { amount: number }>({
@@ -319,7 +324,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: { toolEnabled: true }
+					state: { toolEnabled: true },
+					onMessage: async () => {}
 				},
 				{
 					enabledTool: magmaTool<{ toolEnabled: boolean }, Record<string, never>>({
@@ -366,7 +372,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					checkCtx: magmaTool({
@@ -417,7 +424,8 @@ describe("Tool Execution", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{
 					failingTool: magmaTool({

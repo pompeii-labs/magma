@@ -91,7 +91,8 @@ describe("Agent Integration", () => {
 							})
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{},
 				{
@@ -128,7 +129,8 @@ describe("Agent Integration", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{},
 				{
@@ -164,7 +166,8 @@ describe("Agent Integration", () => {
 							}
 						})
 					},
-					state: {}
+					state: {},
+					onMessage: async () => {}
 				},
 				{},
 				{
@@ -205,6 +208,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				messageContext: 2
 			});
 
@@ -242,6 +246,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				messageContext: -1
 			});
 
@@ -270,6 +275,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				getSystemPrompts: () => [{ role: "system", content: "System prompt" }]
 			});
 
@@ -298,6 +304,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				getSystemPrompts: () => [{ role: "system", content: "Test system prompt" }]
 			});
 
@@ -318,6 +325,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: { testValue: 123 },
+				onMessage: async () => {},
 				getSystemPrompts: (info) => {
 					receivedAgent = info.agent;
 					return [];
@@ -344,6 +352,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				onUsageUpdate: () => {
 					usageReceived = true;
 				}
@@ -372,6 +381,7 @@ describe("Agent Integration", () => {
 						})
 					},
 					state: {},
+					onMessage: async () => {},
 					onError: (error) => {
 						onErrorCalled = true;
 						errorReceived = error;
@@ -426,7 +436,8 @@ describe("Agent Integration", () => {
 						}
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			await Promise.all([
@@ -653,7 +664,8 @@ describe("Agent Integration", () => {
 						}
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			const promise = agent.run("Hello");
@@ -679,7 +691,8 @@ describe("Agent Integration", () => {
 						})
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			await agent.run("Hello");
@@ -698,7 +711,8 @@ describe("Agent Integration", () => {
 						})
 					})
 				},
-				state: {}
+				state: {},
+				onMessage: async () => {}
 			});
 
 			await agent.run("First");
@@ -722,6 +736,7 @@ describe("Agent Integration", () => {
 					})
 				},
 				state: {},
+				onMessage: async () => {},
 				onTrace: (trace) => {
 					traceReceived = trace;
 				}
@@ -747,6 +762,7 @@ describe("Agent Integration", () => {
 						})
 					},
 					state: {},
+					onMessage: async () => {},
 					onError: () => {}, // Suppress error
 					onTrace: () => {
 						traceCalled = true;

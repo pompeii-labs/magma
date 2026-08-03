@@ -3,7 +3,8 @@
 import { Tool, ToolExecutionOptions } from "ai";
 import type { MagmaAgent } from "../agent";
 
-export type MagmaToolCallOptions<STATE> = ToolExecutionOptions & MagmaToolInfo<STATE>;
+export type MagmaToolCallOptions<STATE> = Omit<ToolExecutionOptions<never>, "context"> &
+	MagmaToolInfo<STATE>;
 export type MagmaToolInfo<STATE, TOOLS extends MagmaToolSet<STATE> = any> = {
 	agent: MagmaAgent<STATE, TOOLS>;
 	ctx: Record<string, unknown>;
